@@ -1,2 +1,6 @@
 # direct-conversion
-direct reprogramming
+direct reprogramming from fibroblast to iNeuron, using shPTBP1
+
+
+
+
