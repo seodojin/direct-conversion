@@ -1,6 +1,10 @@
 # caret 
 # brief introduction 
 
+# lets check out 
+# check in 
+
+
 install.packages("caret", dependencies = c("Depends", "Suggests"))
 install.packages("caret")
 library(caret)
