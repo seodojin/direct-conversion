@@ -61,8 +61,6 @@ new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unkno
                      "GABAergic neurons")
   names(new.cluster.ids) <- levels(plus)
 plus <- RenameIdents(plus, new.cluster.ids)
-DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5,
-        split.by = "orig.ident") + NoLegend()
 DimPlot(plus, reduction = "umap", label = F, pt.size = 0.5,
         split.by = "orig.ident") 
 ggsave("20220826 legend add umap split version.png", dpi = 600)
