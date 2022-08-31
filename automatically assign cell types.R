@@ -47,3 +47,23 @@ for(j in unique(sctype_scores$cluster)){
 DimPlot(plus, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'customclassif')  
 
 saveRDS(plus, "annotation 20220831")
+
+# visualize data
+clusters <- DimPlot(plus, reduction = "umap", 
+                    group.by = "seurat_clusters", label = T)
+treat <- DimPlot(plus, reduction = "umap", group.by = "orig.ident")
+
+clusters|treat
+
+# Assigning cell type identity to clusters
+new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
+                     "Fibroblasts", "Glutamatergic neurons",
+                     "GABAergic neurons")
+  names(new.cluster.ids) <- levels(plus)
+plus <- RenameIdents(plus, new.cluster.ids)
+DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5,
+        split.by = "orig.ident") + NoLegend()
+DimPlot(plus, reduction = "umap", label = F, pt.size = 0.5,
+        split.by = "orig.ident") 
+ggsave("20220826 legend add umap split version.png", dpi = 600)
+
