@@ -6,7 +6,7 @@ direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
 store metadata.R
 
-:   single cell RNAseq raw data ë¥¼ ë¶ˆëŸ¬ì„œ QC, filter cells & features, normalization, scaling, clustering (PCA, UMAP), UMAP clustering ì˜ ê²°ê³¼ë¥¼ rds object ë¡œ ë³€í™˜í•´ì„œ ì €ì¥
+:   single cell RNAseq raw data ë¥? ë¶ˆëŸ¬?„œ QC, filter cells & features, normalization, scaling, clustering (PCA, UMAP), UMAP clustering ?˜ ê²°ê³¼ë¥? rds object ë¡? ë³€?™˜?•´?„œ ??€?¥
 
 :   input files (from google drive)
 
@@ -20,15 +20,15 @@ store metadata.R
 
 automatically assign cell types.R
 
-:   scRNA-seq ë°ì´í„°ì˜ umap clustering ê²°ê³¼ë¥¼ ë¶ˆëŸ¬ë“¤ì—¬ì„œ cluster annotation
+:   scRNA-seq ?°?´?„°?˜ umap clustering ê²°ê³¼ë¥? ë¶ˆëŸ¬?“¤?—¬?„œ cluster annotation
 
-    annotation ê²°ê³¼ì™€ plot ì„ ì €ì¥
+    annotation ê²°ê³¼??€ plot ?„ ??€?¥
 
-    cell type marker genes ë°ì´í„°ì…‹
+    cell type marker genes ?°?´?„°?…‹
 
-    -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB, HPA
+    -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB,  CellMarker database
 
-    -   myofibroblast \<- all tissue \<- ScTypeDB_full \<- PanglaoDB, HPA
+    -   myofibroblast \<- all tissue \<- ScTypeDB_full \<- PanglaoDB,  CellMarker database
 
     -   fibroblast \<- all tissue \<- PanglaoDB
 
@@ -52,7 +52,7 @@ automatically assign cell types.R
 
 DE analysis.R
 
-:   neural clusters vs. other clusters ì˜ DE ë¶„ì„ê³¼ GO ë¶„ì„
+:   neural clusters vs. other clusters ?˜ DE ë¶„ì„ê³? GO ë¶„ì„
 
 :   input files
 
@@ -70,7 +70,7 @@ DE analysis.R
 
 20220509 sctype function-1.R
 
-:   ë­˜í•˜ëŠ” ìŠ¤í¬ë¦½í¬ì¸ì§€? ì–´ë–¤ í•¨ìˆ˜ê°€ ì •ì˜ë˜ì–´ ìˆëŠ”ì§€, ì–´ë–¤ ìŠ¤í¬ë¦½í¬ì—ì„œ ì‚¬ìš©ë˜ëŠ”ì§€ automatically assign cell types.R
+:   ë­˜í•˜?Š” ?Š¤?¬ë¦½í¬?¸ì§€? ?–´?–¤ ?•¨?ˆ˜ê°€ ? •?˜?˜?–´ ?ˆ?Š”ì§€, ?–´?–¤ ?Š¤?¬ë¦½í¬?—?„œ ?‚¬?š©?˜?Š”ì§€ automatically assign cell types.R
 
 20220509 sctype function-2.R
 
