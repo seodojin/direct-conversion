@@ -6,7 +6,7 @@ direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
 store metadata.R
 
-:   single cell RNAseq raw data Î•? Î∂àÎü¨?Ñú QC, filter cells & features, normalization, scaling, clustering (PCA, UMAP), UMAP clustering ?ùò Í≤∞Í≥ºÎ•? rds object Î°? Î≥Ä?ôò?ï¥?Ñú ??Ä?û•
+:   single cell RNAseq raw data ??? Î∂àÎü¨??? QC, filter cells & features, normalization, scaling, clustering (PCA, UMAP), UMAP clustering ??? Í≤∞Í≥º??? rds object ??? Î≥Ä????????? ??????
 
 :   input files (from google drive)
 
@@ -20,17 +20,17 @@ store metadata.R
 
 automatically assign cell types.R
 
-:   scRNA-seq ?ç∞?ù¥?Ñ∞?ùò umap clustering Í≤∞Í≥ºÎ•? Î∂àÎü¨?ì§?ó¨?Ñú cluster annotation
+:   scRNA-seq ???????????? umap clustering Í≤∞Í≥º??? Î∂àÎü¨????????? cluster annotation
 
-    annotation Í≤∞Í≥º??Ä plot ?ùÑ ??Ä?û•
+    annotation Í≤∞Í≥º??? plot ??? ??????
 
-    cell type marker genes ?ç∞?ù¥?Ñ∞?Öã
+    cell type marker genes ????????????
 
-    -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB,  CellMarker database
+    -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB, CellMarker database
 
-    -   myofibroblast \<- all tissue \<- ScTypeDB_full \<- PanglaoDB,  CellMarker database
+    -   myofibroblast \<- all tissue \<- ScTypeDB_full \<- PanglaoDB, CellMarker database
 
-    -   fibroblast \<- all tissue \<- PanglaoDB
+    -   fibroblast \<- connective tissue \<- PanglaoDB
 
 :   input files (google drive)
 
@@ -52,7 +52,7 @@ automatically assign cell types.R
 
 DE analysis.R
 
-:   neural clusters vs. other clusters ?ùò DE Î∂ÑÏÑùÍ≥? GO Î∂ÑÏÑù
+:   neural clusters vs. other clusters ??? DE Î∂ÑÏÑù??? GO Î∂ÑÏÑù
 
 :   input files
 
@@ -68,11 +68,9 @@ DE analysis.R
 
     -   20220805 volcano plot.png
 
-20220509 sctype function-1.R
+20220509 sctype function-1.R 20220509 sctype function-2.R
 
-:   Î≠òÌïò?äî ?ä§?Å¨Î¶ΩÌÅ¨?ù∏ÏßÄ? ?ñ¥?ñ§ ?ï®?àòÍ∞Ä ?†ï?ùò?êò?ñ¥ ?ûà?äîÏßÄ, ?ñ¥?ñ§ ?ä§?Å¨Î¶ΩÌÅ¨?óê?Ñú ?Ç¨?ö©?êò?äîÏßÄ automatically assign cell types.R
-
-20220509 sctype function-2.R
+:   use ScType to automatically assign cell types : load two additional ScType functions.
 
 ## Manuscript
 
@@ -81,7 +79,3 @@ DE analysis.R
 ## Data
 
 [access data](https://drive.google.com/drive/folders/11PFSiti3EtbPt2UwwIpIlMXDQNfXhRNq)
-
-## Resources
-
-[markdown tutorial](https://www.markdowntutorial.com/)
