@@ -8,7 +8,7 @@ library(tidyverse)
 lapply(c("dplyr","Seurat","HGNChelper"), library, character.only = T)
 
 # load data
-plus <- readRDS("20220831")
+plus <- readRDS("seurat_object")
 
 # load gene set preparation function
 source("D:/seodojin/Rworld/20220509 sctype function-1.R")
@@ -46,7 +46,7 @@ for(j in unique(sctype_scores$cluster)){
 
 DimPlot(plus, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'customclassif')  
 
-saveRDS(plus, "annotation 20220831")
+saveRDS(plus, "annotation_object")
 
 # visualize data
 clusters <- DimPlot(plus, reduction = "umap", 
@@ -63,5 +63,5 @@ new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unkno
 plus <- RenameIdents(plus, new.cluster.ids)
 DimPlot(plus, reduction = "umap", label = F, pt.size = 0.5,
         split.by = "orig.ident") 
-ggsave("20220826 legend add umap split version.png", dpi = 600)
+ggsave("UMAP_plot.png.png", dpi = 600)
 
