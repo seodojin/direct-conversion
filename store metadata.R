@@ -51,4 +51,4 @@ DimPlot(plus, reduction = "pca")
 DimPlot(plus, split.by = "orig.ident", reduction = "umap")
 
 # save RDS
-saveRDS(plus, "20220831")
+saveRDS(plus, "seurat_object")
