@@ -14,9 +14,9 @@ store metadata.R
 
     -   1129_neuron_SampleTag02_hs_sh_RSEC_MolsPerCell.csv
 
-    output files (to google drive)
+:    output files (to google drive)
 
-    -   20220831.rds
+    -   seurat_object.rds
 
 automatically assign cell types.R
 
@@ -34,7 +34,7 @@ automatically assign cell types.R
 
 :   input files (google drive)
 
-    -   20220831.rds
+    -   seurat_object.rds
 
     -   ScTypeDB_full.xlsx
 
@@ -46,29 +46,35 @@ automatically assign cell types.R
 
 :   output files
 
-    -   annotation 20220831.rds
+    -   annotation_object.rds
 
-    -   20220826 legend add umap split version.png
+    -   umap_plot.png
 
 DE analysis.R
 
-:   neural clusters vs. other clusters ??? DE 분석??? GO 분석
+:   neural clusters vs. other clusters - DE assay & GO assay
 
 :   input files
 
-    -   annotation 20220826.rds
+    -   annotation_object.rds
 
-    output files
+:    output files
 
-    -   glutamatergic.csv
+    -   heatmap.png
+    
+    -   ptbp1_violinplot.png
+    
+    -   glutamatergic.csv 
 
     -   gabaergic.csv
 
     -   neuro.csv
+    
+    -   barplot.png
 
-    -   20220805 volcano plot.png
+    -   volcanoplot.png
 
-20220509 sctype function-1.R 20220509 sctype function-2.R
+20220509 sctype function-1.R, 20220509 sctype function-2.R
 
 :   use ScType to automatically assign cell types : load two additional ScType functions.
 
