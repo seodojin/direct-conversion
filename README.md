@@ -14,7 +14,7 @@ store metadata.R
 
     -   1129_neuron_SampleTag02_hs_sh_RSEC_MolsPerCell.csv
 
-:    output files (to google drive)
+:   output files (to google drive)
 
     -   seurat_object.rds
 
@@ -58,18 +58,18 @@ DE analysis.R
 
     -   annotation_object.rds
 
-:    output files
+:   output files
 
     -   heatmap.png
-    
+
     -   ptbp1_violinplot.png
-    
-    -   glutamatergic.csv 
+
+    -   glutamatergic.csv
 
     -   gabaergic.csv
 
     -   neuro.csv
-    
+
     -   barplot.png
 
     -   volcanoplot.png
