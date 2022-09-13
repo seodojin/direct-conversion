@@ -6,7 +6,7 @@ direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
 store metadata.R
 
-:   single cell RNAseq raw data ??? 불러??? QC, filter cells & features, normalization, scaling, clustering (PCA, UMAP), UMAP clustering ??? 결과??? rds object ??? 변????????? ??????
+:   single cell RNAseq raw data load -\> QC, filter cells & features -\> normalization -\> scaling -\> clustering (PCA, UMAP), UMAP clustering -\> produce rds object
 
 :   input files (from google drive)
 
@@ -20,11 +20,7 @@ store metadata.R
 
 automatically assign cell types.R
 
-:   scRNA-seq ???????????? umap clustering 결과??? 불러????????? cluster annotation
-
-    annotation 결과??? plot ??? ??????
-
-    cell type marker genes ????????????
+:   meta data load -\> cluster annotation -\> produce annotation object, draw UMAP plot
 
     -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB, CellMarker database
 
@@ -64,10 +60,6 @@ DE analysis.R
 
     -   ptbp1_violinplot.png
 
-    -   glutamatergic.csv
-
-    -   gabaergic.csv
-
     -   neuro.csv
 
     -   barplot.png
@@ -77,6 +69,20 @@ DE analysis.R
 20220509 sctype function-1.R, 20220509 sctype function-2.R
 
 :   use ScType to automatically assign cell types : load two additional ScType functions.
+
+Trajectory analysis.R
+
+:   infer the differentiation trajectory of a set of cells
+
+    input files
+
+    -   annotation_object.rds
+
+:   output files
+
+    -   cells_ordered_by_slingshot_pseudotime.png
+
+    -   pcbiplot_slingshotline.png
 
 ## Manuscript
 
