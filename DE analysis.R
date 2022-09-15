@@ -6,9 +6,21 @@ library(DESeq2)
 library(Seurat)
 library(SeuratData)
 library(EnhancedVolcano)
+library(dplyr)
 
 # load data
 plus <- readRDS("annotation_object")
+
+# Assigning cell type identity to clusters
+clusters <- DimPlot(plus, reduction = "umap", 
+                    group.by = "seurat_clusters", label = T)
+treat <- DimPlot(plus, reduction = "umap", group.by = "orig.ident")
+
+new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
+                     "Fibroblasts", "Glutamatergic neurons",
+                     "GABAergic neurons")
+names(new.cluster.ids) <- levels(plus)
+plus <- RenameIdents(plus, new.cluster.ids)
 
 # find markers for every cluster compared to all remaining cells, report only the positive ones
 plus.markers <- FindAllMarkers(plus, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
@@ -95,8 +107,8 @@ library(clusterProfiler)
 library(org.Hs.eg.db)
 library(AnnotationDbi)
 
-rownames(neuro[neuro$avg_log2FC > 0.5,])
-genes_to_test <- rownames(neuro[neuro$avg_log2FC > 0.5,])
+rownames(neuro[neuro$avg_log2FC > 1.5,])
+genes_to_test <- rownames(neuro[neuro$avg_log2FC > 1.5,])
 
 GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db",
                        keyType = "SYMBOL", ont = "BP")
