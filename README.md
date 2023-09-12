@@ -58,11 +58,7 @@ DE analysis.R
 
     -   heatmap.png
 
-    -   ptbp1_violinplot.png
-
     -   neuro.csv
-
-    -   barplot.png
 
     -   volcanoplot.png
 
