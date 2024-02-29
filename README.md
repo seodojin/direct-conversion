@@ -36,11 +36,11 @@ automatically assign cell types.R
 
     -   ScTypeDB_full.xlsx
 
-        <div>
+        
 
         source: <https://github.com/IanevskiAleksandr/sc-type/>
 
-        </div>
+        
 
 :   output files
 
