@@ -2,6 +2,8 @@
 
 direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
+This repository contains scripts for data processing, analysis and figure generation using scRNA-Seq data for our paper:
+
 ## Scripts
 
 store metadata.R
