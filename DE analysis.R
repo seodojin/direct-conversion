@@ -42,13 +42,6 @@ ggsave("heatmap.png", dpi=600)
 VlnPlot(plus, features = "PTBP1") + NoLegend()
 ggsave("ptbp1_violinplot.png", dpi = 600)
 
-# Various gene diagrams are integrated
-Gene = c("HMOX1","MMP1","GDF15","HSPB7","LINC00520",
-          "CYSTM1","SLC6A15","TP53I11",
-          "G0S2","IGFBP5", "PDK4","RGS4")
-VlnPlot(plus,features=Gene, pt.size = 0, stack=T, flip=T) + NoLegend()
-ggsave("20220808 gene1 violin plot.png", dpi = 600)
-
 # Test for DE features using the DESeq2 package
 glu <- FindMarkers(plus, ident.1 = "Glutamatergic neurons", 
                    ident.2 = NULL, only.pos = TRUE,
