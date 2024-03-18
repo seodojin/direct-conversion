@@ -6,9 +6,6 @@ library(dplyr)
 library(Seurat)
 library(patchwork)
 
-# load dataset
-memory.limit(size = 50000)
-
 counts = read.table("1129_neuron_SampleTag01_hs_empty_RSEC_MolsPerCell.csv", skip = 5, sep = ",", header = TRUE, row.names = 1)
 shCtrl = CreateSeuratObject(counts = t(counts), project = "shCtrl")
 
