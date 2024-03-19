@@ -86,6 +86,97 @@ unk <- FindMarkers(plus, ident.1 = "Unknown",
 View(unk)
 write.csv(unk, file = "Unknown.csv")
 
+-------------------
+# file load : 
+plus = readRDS("20240308")
+
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+
+plus.markers <- FindAllMarkers(plus, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
+
+plus.markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 20, order_by = avg_log2FC) -> marker.gene.list
+View(marker.gene.list)
+write.csv(marker.gene.list, file = "20240319 marker gene list 20.csv")
+
+
+
+# plotting the top 10 markers for each cluster.
+plus.markers %>%
+  group_by(cluster) %>%
+  top_n(n = 10, wt = avg_log2FC) -> top10
+DoHeatmap(plus, features = top10$gene) + NoLegend()
+
+#load packages
+
+library(ComplexHeatmap)
+# https://github.com/immunogenomics/presto
+library(presto)
+library(tictoc)
+
+library(magick)
+library(cluster)
+library(circlize)
+
+tic()
+markers<- presto::wilcoxauc(received, 'customclassif', assay = 'data')
+toc()
+
+markers<- top_markers(markers, n = 5, auc_min = 0.6, pct_in_min = 55, pct_out_max = 45)
+
+markers
+
+all_markers<- markers %>%
+  select(-rank) %>% 
+  unclass() %>% 
+  stack() %>%
+  pull(values) %>%
+  unique() %>%
+  .[!is.na(.)]
+DoHeatmap(received, features = all_markers) + NoLegend()
+
+mat<- received[["RNA"]]@data[all_markers, ] %>% as.matrix()
+
+## scale the rows
+mat<- t(scale(t(mat)))
+
+cluster_anno<- received@meta.data$customclassif
+str(cluster_anno)
+# what's the value range in the matrix
+quantile(mat, c(0.05, 0.95))
+
+#https://jokergoo.github.io/ComplexHeatmap-reference/book/other-tricks.html
+
+col_fun = circlize::colorRamp2(c(-1, 0, 2), c("blue", "white", "red"))
+png("20240318-3.png",width = 6.4, height = 4.3, units = "in", res = 1000)
+Heatmap(ordered_mat, name = "Expression",  
+        column_split = factor(cluster_anno,
+                              levels = c("Glutamatergic neurons","GABAergic neurons",
+                                         "Immature neurons","Myofibroblasts",
+                                         "Fibroblasts","Unknown")),
+        cluster_columns = F,
+        cluster_column_slices = F,
+        cluster_rows = TRUE,
+        col = col_fun,
+      
+        row_names_gp = gpar(fontsize = 10),
+        column_title = NULL,
+        column_title_rot = 30,
+        column_title_gp = gpar(fontsize=10),
+        top_annotation = HeatmapAnnotation(foo = anno_block(gp = gpar(fill = scales::hue_pal()(9)))),
+        show_column_names = F,
+        show_heatmap_legend = TRUE,
+        use_raster = TRUE,
+        raster_device = c("png"),
+        raster_quality = 10)
+
+dev.off()
+
+
+-------------------------
+
 # volcano plot of DE genes 
 neuro.df <- as.data.frame(neuro)
 EnhancedVolcano(neuro, x="avg_log2FC", y = "p_val_adj", 
