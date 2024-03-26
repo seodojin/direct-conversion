@@ -44,7 +44,6 @@ plus <- FindClusters(plus, resolution = 0.2)
 # Run non-linear dimensional reduction (UMAP)
 plus <- RunUMAP(plus, dims = 1:10)
 DimPlot(plus, reduction = "umap")
-DimPlot(plus, reduction = "pca")
 DimPlot(plus, split.by = "orig.ident", reduction = "umap")
 
 # save RDS
