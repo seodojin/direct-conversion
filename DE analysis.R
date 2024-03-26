@@ -7,14 +7,12 @@ library(Seurat)
 library(SeuratData)
 library(EnhancedVolcano)
 library(dplyr)
+library(tidyverse)
+library(ComplexHeatmap)
+library(circlize)
 
 # load data
 plus <- readRDS("annotation_object")
-
-# Assigning cell type identity to clusters
-clusters <- DimPlot(plus, reduction = "umap", 
-                    group.by = "seurat_clusters", label = T)
-treat <- DimPlot(plus, reduction = "umap", group.by = "orig.ident")
 
 new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
                      "Fibroblasts", "Glutamatergic neurons",
@@ -22,25 +20,86 @@ new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unkno
 names(new.cluster.ids) <- levels(plus)
 plus <- RenameIdents(plus, new.cluster.ids)
 
-# find markers for every cluster compared to all remaining cells, report only the positive ones
-plus.markers <- FindAllMarkers(plus, only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25)
+# find markers for every cluster compared to all remaining cells
+plus.markers <- FindAllMarkers(plus, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
 plus.markers %>%
   group_by(cluster) %>%
   slice_max(n = 50, order_by = avg_log2FC) -> marker.gene.list
 View(marker.gene.list)
 write.csv(marker.gene.list, file = "marker gene list 50.csv")
 
-# plotting the top 5 markers for each cluster
+# top 5 markers for each cluster
 plus.markers %>%
   group_by(cluster) %>%
   top_n(n = 5, wt = avg_log2FC) -> top5
 
-DoHeatmap(plus, features = top5$gene, label = F) 
-ggsave("heatmap.png", dpi=600)
+# Extract the data you need from Seurat objects
+data <- GetAssayData(plus, assay = "RNA", slot = "data")
+
+genes <- top5$gene
+
+# Extract data matrix for genes of interest
+mat <- data[genes, ]
+
+# Convert a sparse matrix to a regular matrix
+mat <- as.matrix(mat)
+
+# data scaling
+mat <- t(scale(t(log1p(mat))))
+
+# Enable row dendrogram (gene) reordering
+row_dend_reorder <- TRUE 
+  
+cluster_anno<- plus@meta.data$customclassif
+quantile(mat, c(0.05, 0.95))
+  
+col_fun = circlize::colorRamp2(c(-1, 0, 2), c("blue", "white", "red"))
+
+my_colors <- c("Glutamatergic neurons" = "#619cff",
+               "GABAergic neurons" = "#f564e3",
+               "Immature neurons" = "#f8766d",
+               "Myofibroblasts" = "#b79f00",
+               "Fibroblasts" = "#00ba38",
+               "Unknown" = "#00BFC4")
+
+# HeatmapAnnotation
+top_annotation <- HeatmapAnnotation(foo = anno_block(gp = gpar(fill = my_colors[levels(factor(cluster_anno))])), 
+                                    show_legend = TRUE)
+
+cluster_anno <- factor(cluster_anno, levels = names(my_colors))
+top_annotation <- HeatmapAnnotation(foo = anno_block(gp = gpar(fill = my_colors[levels(cluster_anno)])))
+
+# heatmap
+png("heatmap.png", width = 6.4, height = 4.3, units = "in", res = 1000)
+
+Heatmap(mat, 
+        name = "Expression", 
+        top_annotation = top_annotation,  # 수정된 top_annotation 사용
+        column_split = factor(cluster_anno, levels = names(my_colors)),
+        row_dend_reorder = row_dend_reorder, 
+        cluster_rows = TRUE, 
+        cluster_columns = F,
+        show_row_names = TRUE, 
+        show_column_names = F,
+        cluster_column_slices = F,
+        row_names_gp = gpar(fontsize = 8),
+        column_title_rot = 30,
+        column_title_gp = gpar(fontsize=10),
+        col = col_fun,
+        show_heatmap_legend = TRUE,
+        use_raster = TRUE,
+        raster_device = c("png"),
+        raster_quality = 10)
+
+dev.off()
+
 
 # visualizing marker expression
-VlnPlot(plus, features = "PTBP1") + NoLegend()
-ggsave("ptbp1_violinplot.png", dpi = 600)
+VlnPlot(plus, features = "PTBP1") + 
+  NoLegend() + 
+  theme(axis.title.x = element_blank(), plot.title = element_blank()) + 
+  ylab("PTBP1 Expression Level")
+ggsave("20240321ptbp1violinplot.png", dpi = 1000)
 
 # Test for DE features using the DESeq2 package
 glu <- FindMarkers(plus, ident.1 = "Glutamatergic neurons", 
@@ -86,104 +145,14 @@ unk <- FindMarkers(plus, ident.1 = "Unknown",
 View(unk)
 write.csv(unk, file = "Unknown.csv")
 
--------------------
-# file load : 
-plus = readRDS("20240308")
-
-
-# find markers for every cluster compared to all remaining cells, report only the positive ones
-
-plus.markers <- FindAllMarkers(plus, only.pos = F, min.pct = 0.25, logfc.threshold = 0.25)
-
-plus.markers %>%
-  group_by(cluster) %>%
-  slice_max(n = 20, order_by = avg_log2FC) -> marker.gene.list
-View(marker.gene.list)
-write.csv(marker.gene.list, file = "20240319 marker gene list 20.csv")
-
-
-
-# plotting the top 10 markers for each cluster.
-plus.markers %>%
-  group_by(cluster) %>%
-  top_n(n = 10, wt = avg_log2FC) -> top10
-DoHeatmap(plus, features = top10$gene) + NoLegend()
-
-#load packages
-
-library(ComplexHeatmap)
-# https://github.com/immunogenomics/presto
-library(presto)
-library(tictoc)
-
-library(magick)
-library(cluster)
-library(circlize)
-
-tic()
-markers<- presto::wilcoxauc(received, 'customclassif', assay = 'data')
-toc()
-
-markers<- top_markers(markers, n = 5, auc_min = 0.6, pct_in_min = 55, pct_out_max = 45)
-
-markers
-
-all_markers<- markers %>%
-  select(-rank) %>% 
-  unclass() %>% 
-  stack() %>%
-  pull(values) %>%
-  unique() %>%
-  .[!is.na(.)]
-DoHeatmap(received, features = all_markers) + NoLegend()
-
-mat<- received[["RNA"]]@data[all_markers, ] %>% as.matrix()
-
-## scale the rows
-mat<- t(scale(t(mat)))
-
-cluster_anno<- received@meta.data$customclassif
-str(cluster_anno)
-# what's the value range in the matrix
-quantile(mat, c(0.05, 0.95))
-
-#https://jokergoo.github.io/ComplexHeatmap-reference/book/other-tricks.html
-
-col_fun = circlize::colorRamp2(c(-1, 0, 2), c("blue", "white", "red"))
-png("20240318-3.png",width = 6.4, height = 4.3, units = "in", res = 1000)
-Heatmap(ordered_mat, name = "Expression",  
-        column_split = factor(cluster_anno,
-                              levels = c("Glutamatergic neurons","GABAergic neurons",
-                                         "Immature neurons","Myofibroblasts",
-                                         "Fibroblasts","Unknown")),
-        cluster_columns = F,
-        cluster_column_slices = F,
-        cluster_rows = TRUE,
-        col = col_fun,
-      
-        row_names_gp = gpar(fontsize = 10),
-        column_title = NULL,
-        column_title_rot = 30,
-        column_title_gp = gpar(fontsize=10),
-        top_annotation = HeatmapAnnotation(foo = anno_block(gp = gpar(fill = scales::hue_pal()(9)))),
-        show_column_names = F,
-        show_heatmap_legend = TRUE,
-        use_raster = TRUE,
-        raster_device = c("png"),
-        raster_quality = 10)
-
-dev.off()
-
-
--------------------------
-
 # volcano plot of DE genes 
+
 neuro.df <- as.data.frame(neuro)
 EnhancedVolcano(neuro, x="avg_log2FC", y = "p_val_adj", 
                 lab = rownames(neuro), pCutoff = 1e-4, FCcutoff = 1,
                 title = NULL, subtitle = NULL)
-
-ggsave("volcanoplot.png", dpi=600)
+ggsave("volcanoplot.png", dpi=1000, width = 6.43, height = 6, 
+       units = c("in"))
 
 ### Gene Ontology - barplot
 
