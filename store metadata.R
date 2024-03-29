@@ -6,9 +6,6 @@ library(dplyr)
 library(Seurat)
 library(patchwork)
 
-# load dataset
-memory.limit(size = 50000)
-
 counts = read.table("1129_neuron_SampleTag01_hs_empty_RSEC_MolsPerCell.csv", skip = 5, sep = ",", header = TRUE, row.names = 1)
 shCtrl = CreateSeuratObject(counts = t(counts), project = "shCtrl")
 
@@ -47,7 +44,6 @@ plus <- FindClusters(plus, resolution = 0.2)
 # Run non-linear dimensional reduction (UMAP)
 plus <- RunUMAP(plus, dims = 1:10)
 DimPlot(plus, reduction = "umap")
-DimPlot(plus, reduction = "pca")
 DimPlot(plus, split.by = "orig.ident", reduction = "umap")
 
 # save RDS

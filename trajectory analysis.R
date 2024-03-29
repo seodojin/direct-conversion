@@ -7,26 +7,18 @@ library(Seurat)
 library(SeuratDisk)
 library(SeuratData)
 library(patchwork)
+library(SingleCellExperiment)
+library(scater)
+library(ggplot2)
+library(ggbeeswarm)
+library(slingshot)
 
 # load data
 plus <- readRDS("annotation_object")
-
 plus.sce <- as.SingleCellExperiment(plus)
 
 ### Trajectory analysis
 ### reference : https://broadinstitute.github.io/2020_scWorkshop/trajectory-analysis.html
-
-# load package
-library(SingleCellExperiment)
-library(destiny)
-library(clusterExperiment)
-library(gam)
-library(corrplot)
-library(ggplot2)
-library(ggthemes)
-library(remotes)
-library(Matrix)
-
 
 pca.sce <- runPCA(plus.sce,ncomponents=50)
 pca <- reducedDim(plus.sce, "PCA")
@@ -34,29 +26,8 @@ pca <- reducedDim(plus.sce, "PCA")
 plus.sce$PC1 <- pca[,1]
 plus.sce$PC2 <- pca[,2]
 
-# Plot PC biplot with cells colored by customclassif. 
-library(ggbeeswarm)
-ggplot(as.data.frame(colData(plus.sce)), aes(x = PC1, y = PC2, color = customclassif)) + geom_quasirandom(groupOnX = FALSE) +
-  scale_color_tableau() + theme_classic() +
-  xlab("PC1") + ylab("PC2") + ggtitle("PC biplot") + 
-  theme(axis.text.x = element_text(size=10, face = "bold"),
-        axis.text.y = element_text(size =10, face = "bold"),
-        legend.text = element_text(size = 10, face = "bold"), 
-        legend.title = element_blank())
-ggsave("PC_biplot.png", dpi = 600)
-
 # colData(plus.sce) accesses the cell metadata DataFrame object for plus.sce.
 plus.sce$pseudotime_PC1 <- rank(plus.sce$PC1)  
-ggplot(as.data.frame(colData(plus.sce)), aes(x = pseudotime_PC1, y = customclassif, 
-                                             colour = customclassif)) +
-  geom_quasirandom(groupOnX = FALSE) +
-  scale_color_tableau() + theme_classic() +
-  xlab("PC1") + ylab(NULL) +
-  ggtitle("Cells ordered by first principal component") +
-  theme(axis.text.x = element_text(size=15, face = "bold"),
-        axis.text.y = element_text(size =15, face = "bold")) + NoLegend()
-
-ggsave("Cells_ordered_by_PC1.png", dpi = 600)
 
 # Diffusion map pseudotime
 sdj <- logcounts(plus.sce) 
@@ -71,18 +42,7 @@ rownames(pca) <- cellLabels
 dm <- DiffusionMap(pca)
 dpt <- DPT(dm)
 plus.sce$pseudotime_diffusionmap <- rank(eigenvectors(dm)[,1])
-ggplot(as.data.frame(colData(plus.sce)),
-       aes(x=pseudotime_diffusionmap,
-           y=customclassif, colour = customclassif)) +
-  geom_quasirandom(groupOnX = F) +
-  scale_color_tableau() + theme_classic() +
-  xlab("Diffusion component 1 (DC1)") + ylab(NULL) +
-  ggtitle("Cells ordered by DC1")  +
-  theme(axis.text.x = element_text(size=10, face = "bold"),
-        axis.text.y = element_text(size =10, face = "bold")) + NoLegend()
-ggsave("cells_ordered_by_DC1.png", dpi = 600)
 
-library(slingshot)
 sce <- slingshot(plus.sce, reducedDim = 'PCA')
 
 # Plot PC1 vs PC2 colored by Slingshot pseudotime.
@@ -94,10 +54,20 @@ lines(SlingshotDataSet(sce), lwd=2)
 ggplot(as.data.frame(colData(plus.sce)), aes(x = sce$slingPseudotime_1, y = customclassif, 
                                              colour = customclassif)) +
   geom_quasirandom(groupOnX = FALSE) +
-  scale_color_tableau() + theme_classic() +
-  xlab("Slingshot pseudotime") + ylab(NULL)+
-  ggtitle("Cells ordered by Slingshot pseudotime") + NoLegend()
-ggsave("cells_ordered_by_slingshot_pseudotime.png", dpi = 600)
+  scale_color_manual(values = c("Fibroblasts" = "#00ba38", 
+                                "Myofibroblasts" = "#b79f00", 
+                                "Immature neurons" = "#f8766d",
+                                "Glutamatergic neurons"="#619cff",
+                                "GABAergic neurons" = "#f564e3",
+                                "Unknown" = "#00BFC4")) + 
+  theme_classic() +
+  xlab("Slingshot pseudotime") + ylab(NULL) +
+  ggtitle("Cells ordered by Slingshot pseudotime") + 
+  theme(axis.text.x = element_text(size=11, face = "bold"),
+        axis.text.y = element_text(size =11, face = "bold"),
+        axis.title.x = element_text(size = 12, face = "bold"),
+        plot.title = element_text(size = 15, face = "bold")) + NoLegend()
+ggsave("slingshotpseudotime.png", dpi = 1000)
 
 # Cluster cells using the Seurat workflow below.
 gcdata <- CreateSeuratObject(counts = counts(plus.sce), project = "slingshot")
@@ -123,5 +93,7 @@ plus.sce <- slingshot(plus.sce, clusterLabels = 'Seurat_clusters', reducedDim = 
 
 # Plot PC1 vs PC2 colored by Slingshot pseudotime.
 colors <- rainbow(50, alpha = 1)
-plot(reducedDims(plus.sce)$PCA, col = colors[cut(plus.sce$slingPseudotime_1,breaks=50)], pch=16, asp = 1)
-lines(SlingshotDataSet(plus.sce), lwd=2)
+plot(reducedDims(plus.sce)$PCA, 
+     col = colors[cut(plus.sce$slingPseudotime_1,breaks=50)], 
+     pch=16, asp = 1, cex.axis=1.5)
+lines(SlingshotDataSet(plus.sce), lwd=3)
