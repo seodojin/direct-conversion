@@ -1,6 +1,6 @@
 # Molecular characterization of directly reprogrammed neurons using single cell RNA sequencing
 
-#### Do-Jin Seo<sup>1</sup>, Jin-ah Kim, Yoon-Ho Hong<sup>2,3,\*</sup>
+#### Do-Jin Seo<sup>1</sup>, Jin-ah Kim<sup>3</sup>, Yoon-Ho Hong<sup>2,3,\*</sup>
 
 <sup>1</sup>Department of Neurology, Seoul National University, Seoul, 03080, Republic of Korea. <sup>2</sup>Department of Neurology, Medical Research Council, Seoul Metropolitan Government-Seoul National University Boramae Medical Center, Seoul, 07061, Republic of Korea. <sup>3</sup>Neuroscience Research Institute, Seoul National University, Seoul, Republic of Korea.
 
@@ -48,9 +48,7 @@ automatically assign cell types.R
 
     -   UMAPplot.png
 
-![alt text](plots/figure2.png)
-UMAP visualization of single-cell RNA-seq data from shPTBP1 vs. control shRNA-treated fibroblasts (shPTBP1 vs shCtrl).
-
+![alt text](plots/figure2.png) UMAP visualization of single-cell RNA-seq data from shPTBP1 vs. control shRNA-treated fibroblasts (shPTBP1 vs shCtrl).
 
 DE analysis.R
 
@@ -68,9 +66,7 @@ DE analysis.R
 
     -   volcanoplot.png
 
-![alt text](plots/figure3.png)
-(A) Heatmap depicting the expression levels of marker genes across different cell types identified by scRNA-seq. (B) Volcano plot visualizing differentially expressed genes (DEGs) between neuronal and non-neuronal cell populations.
-
+![alt text](plots/figure3.png) (A) Heatmap depicting the expression levels of marker genes across different cell types identified by scRNA-seq. (B) Volcano plot visualizing differentially expressed genes (DEGs) between neuronal and non-neuronal cell populations.
 
 20220509 sctype function-1.R, 20220509 sctype function-2.R
 
@@ -90,9 +86,7 @@ Trajectory analysis.R
 
     -   PCA_slingshotdata_line.png
 
-![alt text](plots/figure4.png)
-(A) Slingshot analysis visualization. Smooth curves represent inferred differentiation trajectories for cells differentiating towards neuronal and myofibroblast lineages. (B) Visualization of single cells positioned along their inferred differentiation trajectories using Slingshot pseudotime.
-
+![alt text](plots/figure4.png) (A) Slingshot analysis visualization. Smooth curves represent inferred differentiation trajectories for cells differentiating towards neuronal and myofibroblast lineages. (B) Visualization of single cells positioned along their inferred differentiation trajectories using Slingshot pseudotime.
 
 ## Data
 
