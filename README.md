@@ -66,7 +66,7 @@ DE analysis.R
 
     -   volcanoplot.png
 
-![Heatmap](plots/heatmap.png) ![Volcano_Plot](plots/volcanoplot.png)
+![(A) Heatmap depicting the expression levels of marker genes across different cell types identified by scRNA-seq. (B) Volcano plot visualizing differentially expressed genes (DEGs) between neuronal and non-neuronal cell populations.](plots/figure3.png)
 
 20220509 sctype function-1.R, 20220509 sctype function-2.R
 
@@ -86,7 +86,7 @@ Trajectory analysis.R
 
     -   PCA_slingshotdata_line.png
 
-![Cell_ordered_by_slinghot_pseudotime_Plot](plots/slingshot_pseudotime.png) ![PCA_slingshotdata_line_Plot](plots/slingshotdata_line.png)
+![(A) Slingshot analysis visualization. Smooth curves represent inferred differentiation trajectories for cells differentiating towards neuronal and myofibroblast lineages. (B) Visualization of single cells positioned along their inferred differentiation trajectories using Slingshot pseudotime.](plots/figure4.png)
 
 ## Data
 
