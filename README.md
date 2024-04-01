@@ -48,7 +48,7 @@ automatically assign cell types.R
 
     -   UMAPplot.png
 
-![UMAP_plot](plots/UMAPplot.png)
+![UMAP visualization of single-cell RNA-seq data from shPTBP1 vs. control shRNA-treated fibroblasts (shPTBP1 vs shCtrl).](plots/UMAPplot.png)
 
 DE analysis.R
 
