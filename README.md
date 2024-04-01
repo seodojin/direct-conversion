@@ -68,10 +68,6 @@ DE analysis.R
 
 ![alt text](plots/figure3.png) (A) Heatmap depicting the expression levels of marker genes across different cell types identified by scRNA-seq. (B) Volcano plot visualizing differentially expressed genes (DEGs) between neuronal and non-neuronal cell populations.
 
-20220509 sctype function-1.R, 20220509 sctype function-2.R
-
-:   use ScType to automatically assign cell types : load two additional ScType functions.
-
 Trajectory analysis.R
 
 :   infer the differentiation trajectory of a set of cells
