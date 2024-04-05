@@ -152,22 +152,4 @@ EnhancedVolcano(neuro, x="avg_log2FC", y = "p_val_adj",
                 lab = rownames(neuro), pCutoff = 1e-4, FCcutoff = 1,
                 title = NULL, subtitle = NULL)
 ggsave("volcanoplot.png", dpi=1000, width = 6.43, height = 6, 
-       units = c("in"))
-
-### Gene Ontology - barplot
-
-library(clusterProfiler)
-library(org.Hs.eg.db)
-library(AnnotationDbi)
-
-rownames(neuro[neuro$avg_log2FC > 1.5,])
-genes_to_test <- rownames(neuro[neuro$avg_log2FC > 1.5,])
-
-GO_results <- enrichGO(gene = genes_to_test, OrgDb = "org.Hs.eg.db",
-                       keyType = "SYMBOL", ont = "BP")
-
-
-as.data.frame(GO_results)
-
-fit <- plot(barplot(GO_results, showCategory = 10))
-ggsave("barplot.png", dpi=600)
+       units = c("in")
