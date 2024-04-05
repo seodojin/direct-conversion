@@ -6,7 +6,7 @@ This repository contains scripts for data processing, analysis and figure genera
 
 ## Scripts
 
-pre_processing.R
+**pre_processing.R**
 
 :   QC and selecting cells
 
@@ -18,7 +18,7 @@ pre_processing.R
 
 :   Cluster the cells
 
-automatically_assign_cell_types.R
+**automatically_assign_cell_types.R**
 
 :   Load and cluster the data
 
@@ -26,11 +26,11 @@ automatically_assign_cell_types.R
 
 :   Automatically detect a tissue type of the dataset
 
-DE_analysis.R
+**DE_analysis.R**
 
 :   Perform DE analysis within the same cell type across conditions - neural clusters vs. other clusters
 
-Trajectory_analysis.R
+**Trajectory_analysis.R**
 
 :   Run principal component analysis
 
