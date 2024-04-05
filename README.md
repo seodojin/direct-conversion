@@ -1,88 +1,42 @@
 # Molecular characterization of directly reprogrammed neurons using single cell RNA sequencing
 
-#### Do-Jin Seo<sup>1</sup>, Jin-ah Kim<sup>3</sup>, Yoon-Ho Hong<sup>2,3,\*</sup>
+direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
-<sup>1</sup>Department of Neurology, Seoul National University, Seoul, 03080, Republic of Korea. <sup>2</sup>Department of Neurology, Medical Research Council, Seoul Metropolitan Government-Seoul National University Boramae Medical Center, Seoul, 07061, Republic of Korea. <sup>3</sup>Neuroscience Research Institute, Seoul National University, Seoul, Republic of Korea.
+This repository contains scripts for data processing, analysis and figure generation using scRNA-Seq data for our paper:
 
-## Abstract
+## Scripts
 
-Neurodegenerative disorders predominantly emerge sporadically, underscoring the necessity of modeling these conditions to advance therapeutic developments. We employed a method that entailed reducing PTBP1 expression in fibroblasts, which resulted in their conversion into neuronal cells with an approximate success rate of 20%. By employing single-cell RNA sequencing, we categorized the cell types and evaluated the gene expression disparities in neurons derived from fibroblasts. Most of the converted neurons were identified as either glutamatergic or GABAergic. Trajectory analysis revealed that the fibroblasts differentiated along two primary pathways, yielding neuron-like and myocyte-like cells. This study introduces a potentially novel approach for the direct reprogramming of human fibroblasts into neurons, signifying a significant advancement in the research and potential treatment of neurodegenerative diseases.
+pre_processing.R
 
-## Analysis scripts
+:   QC and selecting cells
 
-store metadata.R
+:   Normalizing the data
 
-:   single cell RNAseq raw data load -\> QC, filter cells & features -\> normalization -\> scaling -\> clustering (PCA, UMAP), UMAP clustering -\> produce rds object
+:   Scaling the data
 
-:   input files
+:   Perform (non) linear dimensional reduction
 
-    -   1129_neuron_SampleTag01_hs_empty_RSEC_MolsPerCell.csv
+:   Cluster the cells
 
-    -   1129_neuron_SampleTag02_hs_sh_RSEC_MolsPerCell.csv
+automatically_assign_cell_types.R
 
-:   output files
+:   Load and cluster the data
 
-    -   seurat_object.rds
+:   Cell type assignment
 
-automatically assign cell types.R
+:   Automatically detect a tissue type of the dataset
 
-:   meta data load -\> cluster annotation -\> produce annotation object, draw UMAP plot
+DE_analysis.R
 
-    -   cells \<- brain (tissue type) \<- ScTypeDB_full \<- PanglaoDB, CellMarker database
+:   Perform DE analysis within the same cell type across conditions - neural clusters vs. other clusters
 
-    -   myofibroblast \<- all tissue \<- ScTypeDB_full \<- PanglaoDB, CellMarker database
+Trajectory_analysis.R
 
-    -   fibroblast \<- connective tissue \<- PanglaoDB
+:   Run principal component analysis
 
-:   input files
+:   Pseudotime Calculation
 
-    -   seurat_object.rds
-
-    -   ScTypeDB_full.xlsx
-
-        source: <https://github.com/IanevskiAleksandr/sc-type/>
-
-:   output files
-
-    -   annotation_object.rds
-
-    -   UMAPplot.png
-
-![alt text](plots/figure2.png) UMAP visualization of single-cell RNA-seq data from shPTBP1 vs. control shRNA-treated fibroblasts (shPTBP1 vs shCtrl).
-
-DE analysis.R
-
-:   neural clusters vs. other clusters - DE assay & GO assay
-
-:   input files
-
-    -   annotation_object.rds
-
-:   output files
-
-    -   heatmap.png
-
-    -   neuro.csv
-
-    -   volcanoplot.png
-
-![alt text](plots/figure3.png) (A) Heatmap depicting the expression levels of marker genes across different cell types identified by scRNA-seq. (B) Volcano plot visualizing differentially expressed genes (DEGs) between neuronal and non-neuronal cell populations.
-
-Trajectory analysis.R
-
-:   infer the differentiation trajectory of a set of cells
-
-    input files
-
-    -   annotation_object.rds
-
-:   output files
-
-    -   Cells_ordered_by_slingshot_pseudotime.png
-
-    -   PCA_slingshotdata_line.png
-
-![alt text](plots/figure4.png) (A) Slingshot analysis visualization. Smooth curves represent inferred differentiation trajectories for cells differentiating towards neuronal and myofibroblast lineages. (B) Visualization of single cells positioned along their inferred differentiation trajectories using Slingshot pseudotime.
+:   Trajectory Analysis with Slingshot
 
 ## Data
 

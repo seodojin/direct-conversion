@@ -1,6 +1,7 @@
 ### store metadata for a package
 ### reference : https://satijalab.org/seurat/articles/pbmc3k_tutorial.html
-
+## input file : 1129_neuron_SampleTag01_hs_empty_RSEC_MolsPerCell.csv, 1129_neuron_SampleTag02_hs_sh_RSEC_MolsPerCell.csv
+## output file : seurat_object.rds                
 # load package
 library(dplyr)
 library(Seurat)

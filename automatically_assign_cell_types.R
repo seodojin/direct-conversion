@@ -1,7 +1,8 @@
 ### set up Assigning cell type identity to clusters
 ### automatically assign cell types using ScType
 ### reference : https://github.com/IanevskiAleksandr/sc-type/
-
+## input file : seurat_object.rds, ScTypeDB_full.xlsx
+## output file : annotation_object.rds, UMAPplot.png
 # load packages
 library(openxlsx)
 library(tidyverse)

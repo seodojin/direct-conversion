@@ -1,6 +1,7 @@
 ### Perform DE analysis
 ### reference : https://satijalab.org/seurat/articles/de_vignette.html
-
+## input file : annotation_object.rds
+## output file : heatmap.png, neuro.csv, volcanoplot.png
 # load package
 library(DESeq2)
 library(Seurat)

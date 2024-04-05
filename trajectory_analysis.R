@@ -1,6 +1,7 @@
 ### Converting to/from SingleCellExperiment
 ### reference : https://satijalab.org/seurat/articles/conversion_vignette.html
-
+## input file : annotation_object.rds
+## output file : Cells_ordered_by_slingshot_pseudotime.png, PCA_slingshotdata_line.png
 # load package
 library(scater)
 library(Seurat)
