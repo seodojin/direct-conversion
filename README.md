@@ -1,6 +1,6 @@
 # Molecular characterization of directly reprogrammed neurons using single cell RNA sequencing
 
-direct reprogramming from fibroblast to iNeuron, using shPTBP1
+Direct reprogramming from fibroblast to iNeuron, using shPTBP1
 
 This repository contains scripts for data processing, analysis and figure generation using scRNA-Seq data for our paper:
 
@@ -8,36 +8,22 @@ This repository contains scripts for data processing, analysis and figure genera
 
 **pre_processing.R**
 
-:   QC and selecting cells
+-   perform QC and select cells, normalize the data, and scale the data.
 
-:   Normalizing the data
-
-:   Scaling the data
-
-:   Perform (non) linear dimensional reduction
-
-:   Cluster the cells
+-   perform (non)linear dimensional reduction and cluster the cells.
 
 **automatically_assign_cell_types.R**
 
-:   Load and cluster the data
-
-:   Cell type assignment
-
-:   Automatically detect a tissue type of the dataset
+-   Load and cluster the data, assign cell types, and automatically detect the tissue type of the dataset.
 
 **DE_analysis.R**
 
-:   Perform DE analysis within the same cell type across conditions - neural clusters vs. other clusters
+-   Perform DE analysis within the same cell type across conditions. - neural clusters vs. other clusters
 
 **Trajectory_analysis.R**
 
-:   Run principal component analysis
+-   Run principal component analysis, calculate pseudotime, and perform trajectory analysis with Slingshot.
 
-:   Pseudotime Calculation
+## Data availability
 
-:   Trajectory Analysis with Slingshot
-
-## Data
-
-[access data](https://drive.google.com/drive/folders/11PFSiti3EtbPt2UwwIpIlMXDQNfXhRNq)
+Please direct any requests for data to the corresponding author.
