@@ -153,4 +153,4 @@ EnhancedVolcano(neuro, x="avg_log2FC", y = "p_val_adj",
                 lab = rownames(neuro), pCutoff = 1e-4, FCcutoff = 1,
                 title = NULL, subtitle = NULL)
 ggsave("volcanoplot.png", dpi=1000, width = 6.43, height = 6, 
-       units = c("in")
+       units = c("in"))
