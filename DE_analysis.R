@@ -13,7 +13,7 @@ library(ComplexHeatmap)
 library(circlize)
 
 # load data
-plus <- readRDS("annotation_object")
+plus <- readRDS("seurat_object")
 
 new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
                      "Fibroblasts", "Glutamatergic neurons",
@@ -156,7 +156,6 @@ ggsave("volcanoplot.png", dpi=1000, width = 6.43, height = 6,
        units = c("in"))
 
 
-###### 10th july
 # load packages
 library(SingleCellExperiment)
 library(slingshot)
@@ -174,7 +173,7 @@ library(uwot)
 lapply(c("dplyr","Seurat","HGNChelper"), library, character.only = T)
 
 # load data
-plus <- readRDS("20240625")
+plus <- readRDS("seurat_object")
 
 # Print the current cluster levels
 current.cluster.levels <- levels(plus)
