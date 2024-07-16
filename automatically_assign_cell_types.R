@@ -24,21 +24,26 @@ tissue = "Brain" # e.g. Immune system, Liver, Pancreas, Kidney, Eye, Brain
 # prepare gene sets
 gs_list = gene_sets_prepare(db_, tissue)
 
-# get cell-type by cell matrix
-es.max = sctype_score(scRNAseqData = plus[["RNA"]]@scale.data, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+# get scale.data
+scale_data <- GetAssayData(plus, layer = "scale.data")
 
-# merge by cluster
-cL_resutls = do.call("rbind", lapply(unique(plus@meta.data$seurat_clusters), function(cl){
-  es.max.cl = sort(rowSums(es.max[ ,rownames(plus@meta.data[plus@meta.data$seurat_clusters==cl, ])]), decreasing = !0)
-  head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(plus@meta.data$seurat_clusters==cl)), 10)
+# calculate sctype_score 
+es.max <- sctype_score(scRNAseqData = scale_data, scaled = TRUE, gs = gs_list$gs_positive, gs2 = gs_list$gs_negative)
+
+# 클러스터별로 병합
+cL_results <- do.call("rbind", lapply(unique(plus@meta.data$seurat_clusters), function(cl) {
+  es.max.cl <- sort(rowSums(es.max[, rownames(plus@meta.data[plus@meta.data$seurat_clusters == cl, ])]), decreasing = TRUE)
+  head(data.frame(cluster = cl, type = names(es.max.cl), scores = es.max.cl, ncells = sum(plus@meta.data$seurat_clusters == cl)), 10)
 }))
-sctype_scores = cL_resutls %>% group_by(cluster) %>% top_n(n = 1, wt = scores)  
 
-# set low-confident (low ScType score) clusters to "unknown"
-sctype_scores$type[as.numeric(as.character(sctype_scores$scores)) < sctype_scores$ncells/4] = "Unknown"
-print(sctype_scores[,1:3])
+# 가장 높은 점수의 세포 타입 선택
+sctype_scores <- cL_results %>% group_by(cluster) %>% top_n(n = 1, wt = scores)  
 
-# overlay the identified cell types on UMAP plot
+# 신뢰도가 낮은 클러스터를 "Unknown"으로 설정
+sctype_scores$type[as.numeric(sctype_scores$scores) < sctype_scores$ncells / 4] <- "Unknown"
+print(sctype_scores[, 1:3])
+
+# We can also overlay the identified cell types on UMAP plot
 plus@meta.data$customclassif = ""
 for(j in unique(sctype_scores$cluster)){
   cl_type = sctype_scores[sctype_scores$cluster==j,]; 
@@ -47,22 +52,47 @@ for(j in unique(sctype_scores$cluster)){
 
 DimPlot(plus, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'customclassif')  
 
-saveRDS(plus, "annotation_object")
+# Filter out "Unknown" cells
+plus@meta.data$customclassif[plus@meta.data$customclassif == ""] <- "Unknown"
+plus_filtered <- subset(plus, subset = customclassif != "Unknown")
 
-# visualize data
-clusters <- DimPlot(plus, reduction = "umap", 
-                    group.by = "seurat_clusters", label = T)
-treat <- DimPlot(plus, reduction = "umap", group.by = "orig.ident")
+# Create UMAP plot without "Unknown" cells
+DimPlot(plus_filtered, reduction = "umap", group.by = "customclassif", label = TRUE, repel = TRUE) +
+  ggtitle("Cell Types (Excluding Unknown)") +
+  theme(plot.title = element_text(hjust = 0.5))
 
-clusters|treat
+# Define custom colors with transparency
+cc <- c("shCtrl" = alpha("red", 0.2), "shPTBP1" = alpha("blue", 0.2))
+plot1 <- DimPlot(plus_filtered, 
+                 reduction = "umap", 
+                 group.by = "orig.ident", 
+                 cols = cc)
+plot1
 
-# Assigning cell type identity to clusters
-new.cluster.ids <- c("Immature neurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
-                     "Fibroblasts", "Glutamatergic neurons",
-                     "GABAergic neurons")
-  names(new.cluster.ids) <- levels(plus)
-plus <- RenameIdents(plus, new.cluster.ids)
-DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5,
-        split.by = "orig.ident") + NoLegend()
-ggsave("UMAPplot.png.png", dpi = 1000)
+# 고해상도로 플롯 저장
+ggsave("20240711_unknown_filtered_umap_2colors.png", plot = plot1, dpi = 1000)
 
+######### ---------------------------- 11th july
+
+# Print the current cluster levels
+current.cluster.levels <- levels(plus)
+print(current.cluster.levels)
+
+# 클러스터에 세포 타입 이름 할당
+new.cluster.ids <- c("Immature\nneurons", "Myofibroblasts", "Fibroblasts", "Unknown", 
+                     "Fibroblasts", "Neurons", "Neurons")
+names(new.cluster.ids) <- current.cluster.levels
+plus <- RenameIdents(plus_filtered, new.cluster.ids)
+
+# 클러스터 색상을 지정
+custom_colors <- c("Immature\nneurons" = "yellow", "Myofibroblasts" = "green", 
+                   "Fibroblasts" = "red", 
+                   "Neurons" = "blue")
+
+# UMAP 플롯 생성
+DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5, 
+        split.by = "orig.ident", cols = custom_colors, 
+        label.size = 4,     # Adjust the label size
+        alpha = 0.6) + NoLegend()
+
+ggsave("20240712_unknown_filtered_umap_split_version.png", dpi = 1000)
