@@ -1,10 +1,20 @@
 # Load required libraries
+
+if (!require("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+
+BiocManager::install(version = "3.19")
+BiocManager::install("SingleCellExperiment")
+BiocManager::install("slingshot")
+BiocManager::install("scater")
+
 library(SingleCellExperiment)
 library(slingshot)
 library(scater)
 
 # Convert Seurat object to SingleCellExperiment object
 
+plus = readRDS("data/seurat_object2")
 str(plus, max.level = 2)
 
 # counts 데이터 추출 및 병합
@@ -148,42 +158,32 @@ plot_data_long <- plot_data %>%
 # NA 값 제거
 plot_data_long <- plot_data_long %>% filter(!is.na(Pseudotime))
 
-# Checking presence of clusters in trajectories
-for (i in 1:3) {
-  traj_cells <- plot_data_long %>% filter(Trajectory == paste0("Trajectory", i))
-  print(unique(traj_cells$Cluster))
-}
+# # Checking presence of clusters in trajectories
+# for (i in 1:3) {
+#   traj_cells <- plot_data_long %>% filter(Trajectory == paste0("Trajectory", i))
+#   print(unique(traj_cells$Cluster))
+# }
 
 # Check for non-finite values in Pseudotime
-non_finite_rows <- plot_data_long %>% filter(!is.finite(Pseudotime))
-print(non_finite_rows)
+# non_finite_rows <- plot_data_long %>% filter(!is.finite(Pseudotime))
+# print(non_finite_rows)
 
 # Normalize pseudotime values within each trajectory
-plot_data_long <- plot_data_long %>%
+plot_data_long_scaled <- plot_data_long %>%
   group_by(Trajectory) %>%
   mutate(Pseudotime = scales::rescale(Pseudotime))
 
-# Filter out rows with non-finite pseudotime values
-plot_data_long_filtered <- plot_data_long %>% filter(is.finite(Pseudotime))
-
 # Identify groups with fewer than two datapoints
-group_counts <- plot_data_long_filtered %>%
+group_counts <- plot_data_long_scaled %>%
   group_by(Trajectory, Cluster) %>%
   summarise(n = n(), .groups = 'drop')
 
-sparse_groups <- group_counts %>% filter(n < 2)
+plot_data_long_scaled2 = plot_data_long_scaled %>%
+  filter(!(Cluster == "Neurons" & Trajectory == "Trajectory1"))
 
-# Add dummy points for sparse groups
-dummy_points <- sparse_groups %>%
-  rowwise() %>%
-  mutate(Pseudotime = mean(plot_data_long_filtered$Pseudotime, na.rm = TRUE)) %>%
-  select(Trajectory, Cluster, Pseudotime)
-
-# Combine original data with dummy points
-plot_data_long_adjusted <- bind_rows(plot_data_long_filtered, dummy_points)
 
 # Violin plot with adjusted data
-vp <- ggplot(plot_data_long_adjusted, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+vp <- ggplot(plot_data_long_scaled2, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
   geom_violin(scale = "width") +
   facet_wrap(~Trajectory, scales = "free_x", drop = FALSE) +
   theme_minimal() +

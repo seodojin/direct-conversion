@@ -2,24 +2,24 @@
 ### automatically assign cell types using ScType
 ### reference : https://github.com/IanevskiAleksandr/sc-type/
 ## input file : seurat_object.rds, ScTypeDB_full.xlsx
-## output file : annotation_object.rds, UMAPplot.png
 # load packages
 library(openxlsx)
 library(tidyverse)
+
 lapply(c("dplyr","Seurat","HGNChelper"), library, character.only = T)
 
 # load data
-plus <- readRDS("seurat_object")
+plus <- readRDS("data/seurat_object")
 
 # load gene set preparation function
-source("D:/seodojin/Rworld/20220509 sctype function-1.R")
+source("data/20220509 sctype function-1.R")
 
 # load cell type annotation function
-source("D:/seodojin/Rworld/20220509 sctype function-2.R")
+source("data/20220509 sctype function-2.R")
 
 # DB file
-db_ = "D:/seodojin/Rworld/ScTypeDB_full.xlsx";
-tissue = "Brain" # e.g. Immune system, Liver, Pancreas, Kidney, Eye, Brain
+db_ = "data/ScTypeDB_full.xlsx";
+tissue = "Brain" 
 
 # prepare gene sets
 gs_list = gene_sets_prepare(db_, tissue)
@@ -54,6 +54,7 @@ DimPlot(plus, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'custom
 
 # Filter out "Unknown" cells
 plus@meta.data$customclassif[plus@meta.data$customclassif == ""] <- "Unknown"
+
 plus_filtered <- subset(plus, subset = customclassif != "Unknown")
 
 # Create UMAP plot without "Unknown" cells
@@ -96,3 +97,5 @@ DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5,
         alpha = 0.6) + NoLegend()
 
 ggsave("20240712_unknown_filtered_umap_split_version.png", dpi = 1000)
+
+saveRDS(plus, "data/seurat_object2")
