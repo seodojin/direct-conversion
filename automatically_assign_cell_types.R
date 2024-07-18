@@ -54,6 +54,7 @@ DimPlot(plus, reduction = "umap", label = TRUE, repel = TRUE, group.by = 'custom
 
 # Filter out "Unknown" cells
 plus@meta.data$customclassif[plus@meta.data$customclassif == ""] <- "Unknown"
+
 plus_filtered <- subset(plus, subset = customclassif != "Unknown")
 
 # Create UMAP plot without "Unknown" cells
@@ -96,3 +97,5 @@ DimPlot(plus, reduction = "umap", label = TRUE, pt.size = 0.5,
         alpha = 0.6) + NoLegend()
 
 ggsave("20240712_unknown_filtered_umap_split_version.png", dpi = 1000)
+
+saveRDS(plus, "data/seurat_object2")
