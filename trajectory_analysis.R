@@ -1,20 +1,14 @@
-# Load required libraries
-
-if (!require("BiocManager", quietly = TRUE))
-  install.packages("BiocManager")
-
-BiocManager::install(version = "3.19")
-BiocManager::install("SingleCellExperiment")
-BiocManager::install("slingshot")
-BiocManager::install("scater")
-
 library(SingleCellExperiment)
 library(slingshot)
 library(scater)
+library(Seurat)
+library(Rcpp)
+
+sessionInfo()
 
 # Convert Seurat object to SingleCellExperiment object
 
-plus = readRDS("data/seurat_object2")
+plus = readRDS("seurat_object2")
 str(plus, max.level = 2)
 
 # counts 데이터 추출 및 병합
@@ -81,18 +75,22 @@ plot_data <- data.frame(
 )
 
 # 색상 정의
-cell_colors <- c("Neurons" = "blue", "Immature neurons" = "yellow", 
-                 "Myofibroblasts" = "green", "Fibroblasts" = "red")
+library(RColorBrewer)
+cell_colors <- brewer.pal(4, "Paired")
 
 # 궤적 색상 정의
-trajectory_colors <- c("#FF9999", "#66B2FF", "#c0d84d")
+trajectory_colors <- c("red", "green", "blue")
 
 # ggplot으로 그리기
 p <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
   geom_point(size = 0.5, alpha = 0.6) +
   scale_color_manual(values = cell_colors) +
   theme_minimal() +
-  labs(title = "Cell Types with Trajectories")
+  labs(title = "Cell Types with Trajectories") +
+  theme(
+    legend.text = element_text(size = 14),  # 레전드 텍스트 크기
+    legend.title = element_text(size = 14)  # 레전드 제목 크기
+  )
 
 # 궤적 추가
 for (i in seq_along(slingCurves(sds))) {
@@ -122,7 +120,7 @@ for (i in seq_along(slingCurves(sds))) {
 
 p
 
-ggsave("20240712_trajectory_umap_plot.png", plot = p, width = 5, height = 4, dpi = 1000)
+ggsave("20240719_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
 
 
 ########## 20240708 pseudotime vln plot
@@ -131,73 +129,114 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# Pseudotime 값 추출
-pseudotime <- slingPseudotime(sds)
-
-# 데이터 프레임 생성
+# Assign each cell to the primary trajectory based on the lowest pseudotime value
+pseudotime <- as.data.frame(slingPseudotime(sds))
 plot_data <- data.frame(
   Cell = rownames(pseudotime),
-  Trajectory1 = pseudotime[,1],
-  Trajectory2 = pseudotime[,2],
-  Trajectory3 = pseudotime[,3],
   Cluster = sce$updated_customclassif
 )
 
-# 클러스터 색상 정의
-cluster_colors <- c("Neurons" = "blue", 
-                    "Immature neurons" = "yellow", 
-                    "Myofibroblasts" = "green", 
-                    "Fibroblasts" = "red")
+# Get the primary trajectory for each cell
+plot_data$PrimaryTrajectory <- apply(pseudotime, 1, function(x) {
+  traj <- which.min(x)
+  if (is.infinite(x[traj])) {
+    return(NA)
+  } else {
+    return(paste0("Trajectory", traj))
+  }
+})
 
-# Long 형식으로 변환
+# Merge pseudotime data with primary trajectory information
+plot_data <- cbind(plot_data, pseudotime)
+
+# Reshape data for plotting
 plot_data_long <- plot_data %>%
-  pivot_longer(cols = c(Trajectory1, Trajectory2, Trajectory3), 
+  pivot_longer(cols = starts_with("Lineage"), 
                names_to = "Trajectory", 
-               values_to = "Pseudotime")
+               values_to = "Pseudotime") %>%
+  filter(!is.na(Pseudotime))
 
-# NA 값 제거
-plot_data_long <- plot_data_long %>% filter(!is.na(Pseudotime))
+# Trajectory 열의 값을 "Trajectory1", "Trajectory2", "Trajectory3"로 변경
+plot_data_long$Trajectory <- paste0("Trajectory", substr(plot_data_long$Trajectory, 8, 8))
 
-# # Checking presence of clusters in trajectories
-# for (i in 1:3) {
-#   traj_cells <- plot_data_long %>% filter(Trajectory == paste0("Trajectory", i))
-#   print(unique(traj_cells$Cluster))
-# }
+# Filter to keep only the primary trajectory for each cell
+plot_data_long <- plot_data_long %>%
+  filter(Trajectory == PrimaryTrajectory)
 
-# Check for non-finite values in Pseudotime
-# non_finite_rows <- plot_data_long %>% filter(!is.finite(Pseudotime))
-# print(non_finite_rows)
+# 결과 확인
+print(summary(plot_data_long$Pseudotime))
+print(summary(plot_data_long$Trajectory))
+print(head(plot_data_long))
 
 # Normalize pseudotime values within each trajectory
 plot_data_long_scaled <- plot_data_long %>%
   group_by(Trajectory) %>%
-  mutate(Pseudotime = scales::rescale(Pseudotime))
+  mutate(Pseudotime = scales::rescale(Pseudotime)) %>%
+  ungroup()
 
-# Identify groups with fewer than two datapoints
-group_counts <- plot_data_long_scaled %>%
-  group_by(Trajectory, Cluster) %>%
-  summarise(n = n(), .groups = 'drop')
-
-plot_data_long_scaled2 = plot_data_long_scaled %>%
-  filter(!(Cluster == "Neurons" & Trajectory == "Trajectory1"))
+# Define cluster colors
+cluster_colors <- brewer.pal(length(unique(plot_data_long_scaled$Cluster)), "Paired")
 
 
-# Violin plot with adjusted data
-vp <- ggplot(plot_data_long_scaled2, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+
+# 1. 각 궤적의 end cluster 지정
+trajectory_endpoints <- data.frame(
+  Trajectory = c("Trajectory1", "Trajectory2", "Trajectory3"),
+  End_Cluster = c("Myofibroblasts", "Immature neurons", "Neurons")
+)
+
+# 2. 데이터 필터링
+plot_data_filtered <- plot_data_long_scaled %>%
+  left_join(trajectory_endpoints, by = "Trajectory") %>%
+  filter(Cluster == "Fibroblasts" | Cluster == End_Cluster)
+
+# 3. 궤적별 바이올린 플롯
+vp <- ggplot(plot_data_filtered, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
   geom_violin(scale = "width") +
-  facet_wrap(~Trajectory, scales = "free_x", drop = FALSE) +
+  facet_wrap(~Trajectory, scales = "free_x", drop = TRUE) +
   theme_minimal() +
   labs(title = "Pseudotime Distribution by Cluster and Trajectory",
        x = "Pseudotime",
        y = "Cluster") +
-  scale_fill_manual(values = cluster_colors) +  # 사용자 정의 색상 적용
-  theme(legend.position = "top",
-        axis.text.x = element_text(angle = 45, hjust = 1),
-        plot.title = element_text(hjust = 0.5))
+  scale_fill_manual(values = cluster_colors) +
+  theme(
+    legend.position = "none",  # 레전드 제거
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 14),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
+vp
+# 4. 전체 유사시간에 따른 클러스터 분포 시각화
+overall_plot <- ggplot(plot_data_long_scaled, aes(x = Pseudotime, y = Cluster, color = Cluster)) +
+  geom_jitter(alpha = 0.5, height = 0.2) +
+  theme_minimal() +
+  labs(title = "Overall Pseudotime Distribution by Cluster",
+       x = "Pseudotime",
+       y = "Cluster") +
+  scale_color_manual(values = cluster_colors) +
+  theme(
+    legend.position = "none",  # 레전드 제거
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 16),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
+overall_plot
+# 플롯 저장
+ggsave("20240719_pseudotime_distribution_by_cluster_and_trajectory.png", 
+       plot = vp, 
+       width = 10, height = 6, dpi = 1000)
 
-print(vp)
+ggsave("20240719_overall_pseudotime_distribution_by_cluster.png", 
+       plot = overall_plot, 
+       width = 10, height = 6, dpi = 1000)
 
-ggsave("20240712_pseudotime_vlnplot_by_trajectory.png", plot = vp, width = 9, height = 6, dpi = 1000)
+# Save the SingleCellExperiment object
+saveRDS(sce, file = "20240719_sce")
+
 
 ################
 
