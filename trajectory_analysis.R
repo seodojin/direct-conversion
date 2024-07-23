@@ -76,7 +76,7 @@ plot_data <- data.frame(
 
 # 색상 정의
 library(RColorBrewer)
-cell_colors <- brewer.pal(4, "Paired")
+cell_colors <- brewer.pal(4, "Pastel1")
 
 # 궤적 색상 정의
 trajectory_colors <- c("red", "green", "blue")
@@ -88,9 +88,10 @@ p <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
   theme_minimal() +
   labs(title = "Cell Types with Trajectories") +
   theme(
-    legend.text = element_text(size = 14),  # 레전드 텍스트 크기
-    legend.title = element_text(size = 14)  # 레전드 제목 크기
-  )
+    legend.text = element_text(size = 14),  
+    legend.title = element_text(size = 14)  
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 6))) 
 
 # 궤적 추가
 for (i in seq_along(slingCurves(sds))) {
@@ -122,8 +123,6 @@ p
 
 ggsave("20240719_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
 
-
-########## 20240708 pseudotime vln plot
 # load packages
 library(ggplot2)
 library(dplyr)
@@ -175,7 +174,7 @@ plot_data_long_scaled <- plot_data_long %>%
   ungroup()
 
 # Define cluster colors
-cluster_colors <- brewer.pal(length(unique(plot_data_long_scaled$Cluster)), "Paired")
+cluster_colors <- brewer.pal(length(unique(plot_data_long_scaled$Cluster)), "Pastel1")
 
 
 
@@ -234,9 +233,11 @@ ggsave("20240719_overall_pseudotime_distribution_by_cluster.png",
        plot = overall_plot, 
        width = 10, height = 6, dpi = 1000)
 
+# Add the SlingshotDataSet to the metadata of the SCE object
+metadata(sce)$slingshot <- sds
+
 # Save the SingleCellExperiment object
 saveRDS(sce, file = "20240719_sce")
-
 
 ################
 
@@ -250,9 +251,9 @@ sds <- SlingshotDataSet(sds)
 print(sds)
 print(class(sds))
 
-# Step 2: Sample 10 cells from each cluster
+# Step 2: Sample 50 cells from each cluster
 set.seed(123)
-sampled_cells <- as.data.table(plus@meta.data)[, .(cell = .I[sample(.N, min(.N, 10))]), by = seurat_clusters]
+sampled_cells <- as.data.table(plus@meta.data)[, .(cell = .I[sample(.N, min(.N, 50))]), by = seurat_clusters]
 sampled_cells <- sampled_cells$cell
 
 # Step 3: Create a new Seurat object with the sampled cells
@@ -263,6 +264,11 @@ counts_shCtrl <- plus_sampled[["RNA"]]$counts.shCtrl
 counts_shPTBP1 <- plus_sampled[["RNA"]]$counts.shPTBP1
 counts_sampled <- cbind(counts_shCtrl, counts_shPTBP1)
 counts_sparse_sampled <- as(counts_sampled, "sparseMatrix")
+
+# 데이터 전처리: 저발현 유전자 필터링
+min_counts <- 10  # 최소 발현 수
+min_cells <- 3    # 최소 발현 세포 수
+filtered_counts <- counts_sparse_sampled[rowSums(counts_sparse_sampled >= min_counts) >= min_cells, ]
 
 # Step 5: Create SingleCellExperiment object
 umap_coords <- Embeddings(plus_sampled, reduction = "umap")
@@ -311,5 +317,67 @@ n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
 
 print(paste("Number of lineages:", n_lineages))
 
-saveRDS(sce_fitted, file = "20240712_fitGAM_results.rds")
+# Save the fitted SingleCellExperiment object
+slingshot_data <- metadata(sce_fitted)$slingshot
+saveRDS(list(sce_fitted = sce_fitted, slingshot_data = slingshot_data), 
+        file = "20240723_fitGAM_results50.rds")
 
+#################
+library(tradeSeq)
+library(SingleCellExperiment)
+library(slingshot)
+
+loaded_data <- readRDS("20240723_fitGAM_results50.rds")
+sce_fitted <- loaded_data$sce_fitted
+metadata(sce_fitted)$slingshot <- loaded_data$slingshot_data
+
+# slingshot 관련 정보 확인
+print(metadata(sce_fitted)$slingshot)
+
+# lineage 정보 확인
+print(slingLineages(metadata(sce_fitted)$slingshot))
+
+# lineage 수 확인
+n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
+print(paste("Number of lineages:", n_lineages))
+
+# patternTest 사용
+pattern_res <- patternTest(sce_fitted)
+curve3_pattern <- pattern_res[, 3]
+# p-value < 0.05로 유의미한 유전자 선택
+significant_genes_pvalue <- rownames(pattern_res)[pattern_res$pvalue < 0.05]
+print(paste("Number of significant genes (p-value < 0.05):", length(significant_genes_pvalue)))
+# FDR 계산
+fdr_values <- p.adjust(pattern_res$pvalue, method = "fdr")
+# FDR < 0.2로 유의미한 유전자 선택
+significant_genes_fdr_0.2 <- rownames(pattern_res)[fdr_values < 0.2]
+print(paste("Number of significant genes (FDR < 0.2):", length(significant_genes_fdr_0.2)))
+
+top_genes <- head(pattern_res[order(pattern_res$pvalue), ], 20)
+print("Top significant genes by p-value:")
+print(top_genes)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("clusterProfiler")
+BiocManager::install("org.Hs.eg.db") 
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# 유의미한 유전자 목록 준비
+significant_genes <- significant_genes_pvalue
+
+# GO 분석 수행
+go_results <- enrichGO(gene = significant_genes,
+                       OrgDb = org.Hs.eg.db,
+                       keyType = "SYMBOL", 
+                       ont = "BP",
+                       pAdjustMethod = "BH",
+                       pvalueCutoff = 0.05,
+                       qvalueCutoff = 0.2)
+
+# 시각화
+barplot(go_results, showCategory = 10, title = "Top 10 GO terms")
+dotplot(go_results, showCategory = 10, title = "Top 10 GO terms")
+cnetplot(go_results, showCategory = 10, foldChange = NULL, circular = TRUE, colorEdge = TRUE)
+heatplot(go_results, foldChange = NULL)
