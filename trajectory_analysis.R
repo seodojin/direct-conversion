@@ -8,7 +8,7 @@ sessionInfo()
 
 # Convert Seurat object to SingleCellExperiment object
 
-plus = readRDS("seurat_object2")
+plus = readRDS("data/seurat_object2")
 str(plus, max.level = 2)
 
 # counts 데이터 추출 및 병합
@@ -56,7 +56,6 @@ sce$updated_customclassif <- sapply(sce$customclassif, update_cluster_labels)
 
 # 업데이트된 고유 클러스터 확인
 unique_clusters <- unique(sce$updated_customclassif)
-print(unique_clusters)
 
 # Slingshot 실행 (업데이트된 레이블 사용)
 sds <- slingshot(sce, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
@@ -128,22 +127,50 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 
-# Assign each cell to the primary trajectory based on the lowest pseudotime value
+
+set.seed(123) # 결과 재현을 위해 시드 설정
+
+# plot_data 데이터 프레임 생성
 pseudotime <- as.data.frame(slingPseudotime(sds))
 plot_data <- data.frame(
   Cell = rownames(pseudotime),
-  Cluster = sce$updated_customclassif
+  Cluster = sce$updated_customclassif,
+  Pseudotime = pseudotime
 )
 
-# Get the primary trajectory for each cell
-plot_data$PrimaryTrajectory <- apply(pseudotime, 1, function(x) {
-  traj <- which.min(x)
-  if (is.infinite(x[traj])) {
-    return(NA)
-  } else {
-    return(paste0("Trajectory", traj))
-  }
-})
+# 강제 lineage 할당
+plot_data$Lineage <- NA
+
+# 각 클러스터에 대해 강제로 lineage 할당
+plot_data <- plot_data %>%
+  mutate(Lineage = case_when(
+    Cluster == "Myofibroblasts" ~ "Lineage1",
+    Cluster == "Immature neurons" ~ "Lineage2",
+    Cluster == "Neurons" ~ "Lineage3",
+    Cluster == "Fibroblasts" ~ sample(c("Lineage1", "Lineage2", "Lineage3"), n(), replace = T)
+  ))
+
+# Pseudotime 컬럼 추가 및 값 할당
+plot_data <- plot_data %>%
+  mutate(Pseudotime = case_when(
+    Lineage == "Lineage1" ~ Pseudotime.Lineage1,
+    Lineage == "Lineage2" ~ Pseudotime.Lineage2,
+    Lineage == "Lineage3" ~ Pseudotime.Lineage3
+  ))
+
+# plot_data_long 생성
+plot_data_long <- plot_data %>%
+  select(Cell, Cluster, Lineage, Pseudotime)
+
+# Pseudotime에 따른 클러스터 분포 시각화
+ggplot(plot_data_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+  geom_violin(scale = "width", adjust = 1.5) +
+  facet_wrap(~ Lineage, scales = "free_y") +
+  labs(title = "Pseudotime vs Cluster", x = "Pseudotime", y = "Cluster") +
+  theme_minimal() +
+  theme(axis.text.y = element_text(angle = 45, hjust = 1))
+
+######################### 
 
 # Merge pseudotime data with primary trajectory information
 plot_data <- cbind(plot_data, pseudotime)
