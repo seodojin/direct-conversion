@@ -180,10 +180,10 @@ print(slingLineages(sds))
 
 # Additional steps for sampled cells and GAM fitting
 set.seed(123)
-# 각 클러스터의 5%를 선택하여 샘플링
+# 각 클러스터의 10%를 선택하여 샘플링
 sampled_cells <- as.data.table(plus@meta.data)[, {
   num_cells <- .N  # 해당 클러스터의 총 세포 수
-  sample_size <- ceiling(num_cells * 0.1)  # 5%에 해당하는 세포 수 계산
+  sample_size <- ceiling(num_cells * 0.1)  # 10%에 해당하는 세포 수 계산
   .(cell = .I[sample(.N, sample_size)])  # 해당 클러스터에서 샘플링된 세포의 인덱스
 }, by = seurat_clusters]$cell
 
