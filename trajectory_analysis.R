@@ -16,6 +16,8 @@ library(org.Hs.eg.db)
 library(clusterProfiler)
 library(enrichplot)
 library(pheatmap)
+library(ComplexHeatmap)
+library(circlize)
 
 # Convert Seurat object to SingleCellExperiment object
 plus <- readRDS("seurat_object2")
@@ -35,15 +37,14 @@ data <- cbind(data_shCtrl, data_shPTBP1)
 sce <- SingleCellExperiment(
   assays = list(counts = counts, logcounts = data),
   colData = plus@meta.data,
-  reducedDims = list(PCA = Embeddings(plus, "pca"), UMAP = Embeddings(plus, "umap"))
-)
+  reducedDims = list(PCA = Embeddings(plus, "pca"), UMAP = Embeddings(plus, "umap")))
 
 # Add active identifiers
 sce$cell_type <- plus@active.ident
 
 # Scaling and PCA
 sce <- logNormCounts(sce) # Log normalization (skip if already done)
-sce <- scater::runPCA(sce, exprs_values = "logcounts") # Run PCA
+sce <- scater::runPCA(sce, exprs_values = "logcounts") 
 
 # Define cluster label update function
 update_cluster_labels <- function(label) {
@@ -74,10 +75,10 @@ lineage_colors <- c("Immature neurons" = "#440154",
 # Plot trajectories with ggplot2
 umap_coords <- reducedDims(sce)$UMAP
 plot_data <- data.frame(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2], CellType = sce$updated_customclassif)
-cell_colors <- c("Immature neurons" = "#e41a1c", 
-                 "Myofibroblasts" = "#ff7f00", 
-                 "Fibroblasts" = "#d147a3", 
-                 "Neurons" = "#3772b8")
+cell_colors <- c("Immature neurons" = "#00bef3", 
+                 "Myofibroblasts" = "#ff8c8c", 
+                 "Fibroblasts" = "#19c3a3", 
+                 "Neurons" = "#d4a600")
 
 p <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
   geom_point(size = 0.5, alpha = 0.6) +
@@ -104,7 +105,7 @@ for (i in seq_along(slingCurves(sds))) {
 
 print(p)
 
-ggsave("20240730_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
+ggsave("20240806_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
 print(slingLineages(sds))
 
 # Pseudotime violin plot
@@ -148,10 +149,10 @@ plot_data_long_clean <- plot_data %>%
 print(table(plot_data_long_clean$Cluster, plot_data_long_clean$Lineage))
 
 # Define cell colors
-cell_colors <- c("Immature neurons" = "#e41a1c", 
-                 "Myofibroblasts" = "#ff7f00", 
-                 "Fibroblasts" = "#d147a3", 
-                 "Neurons" = "#3772b8")
+cell_colors <- c("Immature neurons" = "#00bef3", 
+                 "Myofibroblasts" = "#ff8c8c", 
+                 "Fibroblasts" = "#19c3a3", 
+                 "Neurons" = "#d4a600")
 names(cell_colors) <- unique(plot_data_long_clean$Cluster)
 
 # Create violin plot
@@ -166,10 +167,9 @@ ggplot(plot_data_long_clean, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
     axis.text.y = element_text(size = 16),
     plot.title = element_text(hjust = 0.5, size = 16),
     axis.title.x = element_text(size = 14),
-    axis.title.y = element_text(size = 14)
-  )
+    axis.title.y = element_text(size = 14))
 
-ggsave("20240730_pseudotime_violin_plot.png", width = 7, height = 6, dpi = 1000)
+ggsave("20240806_pseudotime_violin_plot.png", width = 7, height = 6, dpi = 1000)
 
 # Save the SingleCellExperiment object
 saveRDS(sds, file = "20240730_slingshot_sds_results.rds")
@@ -180,8 +180,18 @@ print(slingLineages(sds))
 
 # Additional steps for sampled cells and GAM fitting
 set.seed(123)
-sampled_cells <- as.data.table(plus@meta.data)[, .(cell = .I[sample(.N, min(.N, 50))]), by = seurat_clusters]$cell
+# 각 클러스터의 5%를 선택하여 샘플링
+sampled_cells <- as.data.table(plus@meta.data)[, {
+  num_cells <- .N  # 해당 클러스터의 총 세포 수
+  sample_size <- ceiling(num_cells * 0.1)  # 5%에 해당하는 세포 수 계산
+  .(cell = .I[sample(.N, sample_size)])  # 해당 클러스터에서 샘플링된 세포의 인덱스
+}, by = seurat_clusters]$cell
+
+# 샘플링된 세포를 사용하여 Seurat 객체를 서브셋
 plus_sampled <- subset(plus, cells = sampled_cells)
+
+# 샘플링 결과 확인
+table(plus_sampled@meta.data$seurat_clusters)
 
 counts_shCtrl <- plus_sampled[["RNA"]]$counts.shCtrl
 counts_shPTBP1 <- plus_sampled[["RNA"]]$counts.shPTBP1
@@ -205,7 +215,7 @@ print(slingLineages(sds_sampled))
 
 sds <- SlingshotDataSet(sds_sampled)
 
-sce_fitted <- fitGAM(counts = assay(sce_sampled, "counts"), sds = sds, nknots = 5, verbose = TRUE, parallel = FALSE)
+sce_fitted <- fitGAM(counts = assay(sce_sampled, "counts"), sds = sds, nknots = 6, verbose = TRUE, parallel = FALSE)
 print(str(sce_fitted))
 print(names(sce_fitted))
 metadata(sce_fitted)$slingshot <- sds
@@ -214,128 +224,9 @@ print(metadata(sce_fitted)$slingshot)
 n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
 print(paste("Number of lineages:", n_lineages))
 
-saveRDS(list(sce_fitted = sce_fitted, slingshot_data = metadata(sce_fitted)$slingshot), file = "20240730_fitGAM_results50.rds")
+saveRDS(list(sce_fitted = sce_fitted, slingshot_data = metadata(sce_fitted)$slingshot), 
+        file = "20240802_fitGAM_results010.rds")
 
-# Perform patternTest
-pattern_res <- patternTest(sce_fitted)
+pseudotime <- slingPseudotime(sds_sampled)
+print(summary(pseudotime))
 
-# Extract results for curve 3
-curve3_pattern <- pattern_res[, 3]
-
-# Assign gene names to curve3_pattern
-names(curve3_pattern) <- rownames(pattern_res)
-
-# Print the top 10 significant genes for curve 3 by p-value
-print("Top 10 significant genes for curve 3 by p-value:")
-print(head(sort(curve3_pattern), 10))
-
-# Select significant genes with p-value < 0.05 for curve 3
-significant_genes_pvalue <- names(curve3_pattern)[curve3_pattern < 0.05]
-print(paste("Number of significant genes for curve 3 (p-value < 0.05):", length(significant_genes_pvalue)))
-
-# Calculate FDR and select significant genes with FDR < 0.05 for curve 3
-fdr_values <- p.adjust(curve3_pattern, method = "fdr")
-significant_genes_fdr_0.05 <- names(curve3_pattern)[fdr_values < 0.05]
-print(paste("Number of significant genes for curve 3 (FDR < 0.05):", length(significant_genes_fdr_0.05)))
-
-# Select significant genes for GO analysis (using FDR < 0.05)
-significant_genes <- significant_genes_fdr_0.05
-
-# Perform GO analysis
-go_results <- enrichGO(gene = significant_genes,
-                       OrgDb = org.Hs.eg.db,
-                       keyType = "SYMBOL",
-                       ont = "BP",  # Biological Process
-                       pAdjustMethod = "BH",
-                       pvalueCutoff = 0.05)
-
-# Check the results
-go_results_df <- as.data.frame(go_results)
-print(head(go_results_df, 10))
-
-# Calculate term similarity
-go_results_sim <- pairwise_termsim(go_results)
-
-# Create and save emapplot
-p <- emapplot(go_results_sim, showCategory = 20, color = "p.adjust",
-              layout.params = list(layout = "kk"))
-p
-ggsave("20240726_emapplot_high_res.png", plot = p, width = 12, height = 10, dpi = 1000, units = "in")
-
-# Save the results to a dataframe
-write.csv(go_results_df, file = "20240726_GO_analysis_results_curve3_FDR0.05.csv", row.names = FALSE)
-
-# Perform associationTest
-# Select significant genes with FDR < 0.05
-wald_stats <- associationTest(sce_fitted, lineages = TRUE)
-
-# Remove NA values
-wald_stats <- wald_stats[!is.na(wald_stats$waldStat), ]
-
-# Select top 10 genes by p-value
-top_genes <- rownames(wald_stats[order(wald_stats$pvalue, decreasing = FALSE), ])[1:10]
-
-# Check the selected genes
-print(top_genes)
-
-# Plot the expression patterns of the top 10 genes along pseudotime
-top_genes <- rownames(wald_stats[order(wald_stats$pvalue, decreasing = FALSE), ])[1:10]
-
-# List to store plots
-plots <- list()
-
-# Run plotSmoothers for each gene
-for (gene in top_genes) {
-  p <- plotSmoothers(sce_fitted, counts = assay(sce_sampled, "counts"), gene = gene, lwd = 1.5) +
-    ggtitle(paste("Expression of", gene, "along Pseudotime"))
-  plots[[gene]] <- p
-}
-
-# Check the plots
-plots[[1]]  # Plot for the first gene
-
-# Perform earlyDETest
-early_de_results <- earlyDETest(sce_fitted)
-
-# Extract significant genes with FDR < 0.05
-significant_genes_early_de <- rownames(early_de_results)[p.adjust(early_de_results$pvalue, method = "fdr") < 0.05]
-print(paste("Number of significant genes from earlyDETest (FDR < 0.05):", length(significant_genes_early_de)))
-
-# Calculate FDR from p-values
-early_de_results$FDR <- p.adjust(early_de_results$pvalue, method = "fdr")
-
-# Select top significant genes based on FDR
-top_genes <- rownames(early_de_results[order(early_de_results$FDR), ])[1:20]
-
-# Check the selected top genes
-print(top_genes)
-
-# Extract expression data for top genes
-expression_data <- assay(sce_sampled, "counts")[top_genes, ]
-
-# Log-transform the data
-log_expression_data <- log1p(expression_data)
-
-# Extract cluster information from the metadata
-cluster_info <- colData(sce_sampled)$updated_customclassif
-
-# Combine log-transformed expression data with cluster information
-log_expression_df <- as.data.frame(t(log_expression_data))
-log_expression_df$Cluster <- cluster_info
-
-# Calculate mean expression per cluster
-cluster_expression <- log_expression_df %>%
-  group_by(Cluster) %>%
-  summarise(across(everything(), mean))
-
-# Convert to matrix and set row names
-cluster_expression_matrix <- as.matrix(cluster_expression[,-1])
-rownames(cluster_expression_matrix) <- cluster_expression$Cluster
-
-# Save the heatmap to a file
-png(filename = "20240730_Top_20_Significant_Genes_Heatmap_by_Cluster.png", width = 8, height = 6, units = "in", res = 600)
-pheatmap(cluster_expression_matrix, scale = "row", clustering_distance_rows = "euclidean", 
-         clustering_distance_cols = "euclidean", clustering_method = "complete", 
-         show_rownames = TRUE, show_colnames = TRUE, 
-         main = "Top 20 Significant Genes Heatmap by Cluster")
-dev.off()
