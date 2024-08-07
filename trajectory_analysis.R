@@ -20,7 +20,7 @@ library(ComplexHeatmap)
 library(circlize)
 
 # Convert Seurat object to SingleCellExperiment object
-plus <- readRDS("seurat_object2")
+plus <- readRDS("data/seurat_object2")
 str(plus, max.level = 2)
 
 # Extract and merge counts data
@@ -153,56 +153,10 @@ ggplot(plot_data_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
   theme_minimal() +
   theme(axis.text.y = element_text(angle = 45, hjust = 1))
 
-######################### 
-
-# Merge pseudotime data with primary trajectory information
-plot_data <- cbind(plot_data, pseudotime)
-
-# Reshape data for plotting
-plot_data_long <- plot_data %>%
-  pivot_longer(cols = starts_with("Lineage"), 
-               names_to = "Trajectory", 
-               values_to = "Pseudotime") %>%
-
-plot_data_long_clean <- plot_data %>%
-  select(Cell, Cluster, Lineage, Pseudotime) %>%
-  filter(!is.na(Pseudotime))
-
-# Generate table for checking
-print(table(plot_data_long_clean$Cluster, plot_data_long_clean$Lineage))
-
-# Define cell colors
-cell_colors <- c("Immature neurons" = "#00bef3", 
-                 "Myofibroblasts" = "#ff8c8c", 
-                 "Fibroblasts" = "#19c3a3", 
-                 "Neurons" = "#d4a600")
-names(cell_colors) <- unique(plot_data_long_clean$Cluster)
-
-# Create violin plot
-ggplot(plot_data_long_clean, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
-  geom_violin(scale = "width", adjust = 1.5) +
-  scale_fill_manual(values = cell_colors) +
-  labs(title = "Pseudotime Distribution by Cluster", x = "Pseudotime", y = "Cluster") +
-  theme_minimal() +
-  theme(
-    legend.position = "none",
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    axis.text.y = element_text(size = 16),
-    plot.title = element_text(hjust = 0.5, size = 16),
-    axis.title.x = element_text(size = 14),
-    axis.title.y = element_text(size = 14))
-
-ggsave("20240806_pseudotime_violin_plot.png", width = 7, height = 6, dpi = 1000)
-
-# Save the SingleCellExperiment object
-saveRDS(sds, file = "20240730_slingshot_sds_results.rds")
-sds <- readRDS("20240730_slingshot_sds_results.rds")
-print(sds)
-print(class(sds))
-print(slingLineages(sds))
 
 # Additional steps for sampled cells and GAM fitting
 set.seed(123)
+
 # 각 클러스터의 10%를 선택하여 샘플링
 sampled_cells <- as.data.table(plus@meta.data)[, {
   num_cells <- .N  # 해당 클러스터의 총 세포 수
@@ -231,25 +185,15 @@ sce_sampled <- SingleCellExperiment(assays = list(counts = filtered_counts), col
 
 sce_sampled$updated_customclassif <- sapply(sce_sampled$customclassif, update_cluster_labels)
 
-set.seed(123)
 sds_sampled <- slingshot(sce_sampled, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
                          start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
-print(slingLineages(sds_sampled))
 
 sds <- SlingshotDataSet(sds_sampled)
 
 sce_fitted <- fitGAM(counts = assay(sce_sampled, "counts"), sds = sds, nknots = 6, verbose = TRUE, parallel = FALSE)
-print(str(sce_fitted))
-print(names(sce_fitted))
-metadata(sce_fitted)$slingshot <- sds
-print(metadata(sce_fitted)$slingshot)
 
-n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
-print(paste("Number of lineages:", n_lineages))
+metadata(sce_fitted)$slingshot <- sds
 
 saveRDS(list(sce_fitted = sce_fitted, slingshot_data = metadata(sce_fitted)$slingshot), 
-        file = "20240802_fitGAM_results010.rds")
-
-pseudotime <- slingPseudotime(sds_sampled)
-print(summary(pseudotime))
+        file = "data/20240802_fitGAM_results010.rds")
 
