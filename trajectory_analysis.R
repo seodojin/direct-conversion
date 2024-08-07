@@ -165,7 +165,7 @@ plot_data_long <- plot_data %>%
 # Pseudotime에 따른 클러스터 분포 시각화
 ggplot(plot_data_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
   geom_violin(scale = "width", adjust = 1.5) +
-  facet_wrap(~ Lineage, scales = "free_y") +
+#  facet_wrap(~ Lineage, scales = "free_y") +
   labs(title = "Pseudotime vs Cluster", x = "Pseudotime", y = "Cluster") +
   theme_minimal() +
   theme(axis.text.y = element_text(angle = 45, hjust = 1))
