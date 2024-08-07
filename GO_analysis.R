@@ -188,13 +188,91 @@ ggsave("20240806_gene_expression_patterns_clustered.png", width = 7.5, height = 
 
 
 
+# 각 궤적별로 클러스터 유전자 목록 추출
+extract_cluster_genes <- function(data, lineage_num) {
+  data %>%
+    filter(lineage == lineage_num) %>%
+    group_by(cluster) %>%
+    summarise(genes = list(unique(gene))) %>%
+    mutate(cluster_name = paste0("lineage", lineage_num, "_cluster", cluster))
+}
+
+lineage1_clusters <- extract_cluster_genes(plot_data_with_clusters, 1)
+lineage2_clusters <- extract_cluster_genes(plot_data_with_clusters, 2)
+lineage3_clusters <- extract_cluster_genes(plot_data_with_clusters, 3)
+
+# 모든 클러스터 정보 합치기
+all_clusters <- bind_rows(lineage1_clusters, lineage2_clusters, lineage3_clusters)
 
 
 
 
+# GO 분석 함수 (이전과 동일)
+perform_go_analysis <- function(gene_list, cluster_name) {
+  ego <- enrichGO(gene = gene_list,
+                  OrgDb = org.Hs.eg.db,
+                  keyType = "SYMBOL",
+                  ont = "BP",
+                  pAdjustMethod = "BH",
+                  pvalueCutoff = 0.05,
+                  qvalueCutoff = 0.2)
+  
+  return(list(result = ego, name = cluster_name))
+}
+
+# 모든 클러스터에 대해 GO 분석 수행
+go_results <- lapply(1:nrow(all_clusters), function(i) {
+  perform_go_analysis(all_clusters$genes[[i]], all_clusters$cluster_name[i])
+})
+
+# emapplot을 사용한 결과 시각화
+for (result in go_results) {
+  # 결과가 비어있지 않은 경우에만 그래프 생성
+  if (nrow(result$result) > 0) {
+    # 엣지 계산
+    ego_sim <- pairwise_termsim(result$result)
+    
+    # emapplot 생성
+    p <- emapplot(ego_sim, showCategory = 20)  # 상위 30개 카테고리 표시
+    
+    # 그래프 출력
+    print(p + ggtitle(paste("Enrichment Map -", result$name)))
+    
+    # 그래프 저장
+    ggsave(
+      filename = paste0("emapplot_", result$name, ".png"),
+      plot = p,
+      width = 12,  # 인치 단위, 필요에 따라 조정
+      height = 8, # 인치 단위, 필요에 따라 조정
+      dpi = 600,
+      bg = "white" # 배경색 설정
+    )
+  } else {
+    cat("No significant GO terms found for", result$name, "\n")
+  }
+}
 
 
 
+
+# 특정 클러스터의 시간에 따른 발현 변화 시각화
+plot_time_course <- function(data, lineage_num, cluster_num) {
+  data %>%
+    filter(lineage == lineage_num, cluster == cluster_num) %>%
+    ggplot(aes(x = Pseudotime, y = Expression, group = gene, color = gene)) +
+    geom_line() +
+    theme_minimal() +
+    labs(title = paste("Expression over time - Lineage", lineage_num, "Cluster", cluster_num),
+         x = "Pseudotime", y = "Expression") +
+    theme(legend.position = "none")
+}
+
+# 예: 궤적 3의 클러스터 5 시각화
+print(plot_time_course(plot_data_with_clusters, 3, 5))
+print(plot_time_course(plot_data_with_clusters, 3, 3))
+print(plot_time_course(plot_data_with_clusters, 1, 5))
+print(plot_time_course(plot_data_with_clusters, 1, 2))
+print(plot_time_course(plot_data_with_clusters, 2, 4))
 
 
 
