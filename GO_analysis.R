@@ -20,7 +20,7 @@ library(ComplexHeatmap)
 library(circlize)
 
 
-loaded_data <- readRDS("20240802_fitGAM_results010.rds")
+loaded_data <- readRDS("data/20240802_fitGAM_results010.rds")
 sce_fitted <- loaded_data$sce_fitted
 metadata(sce_fitted)$slingshot <- loaded_data$slingshot_data
 
@@ -30,17 +30,8 @@ print(metadata(sce_fitted)$slingshot)
 # lineage 정보 확인
 print(slingLineages(metadata(sce_fitted)$slingshot))
 
-# lineage 수 확인
-n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
-print(paste("Number of lineages:", n_lineages))
-
-
-
 # 객체의 메타데이터 확인
 print(metadata(sce_fitted))
-
-# slingshot 데이터 확인
-print(metadata(sce_fitted)$slingshot)
 
 # assay 데이터 구조 확인
 print(assayNames(sce_fitted))
@@ -50,13 +41,8 @@ print(dim(assay(sce_fitted, "counts")))
 print(colData(sce_fitted)$lineage)
 
 
-
-
 slingshot_data <- metadata(sce_fitted)$slingshot
 print(slingLineages(slingshot_data))
-
-
-
 
 
 # SlingshotDataSet 객체 확인 
@@ -65,30 +51,12 @@ sds <- metadata(sce_fitted)$slingshot
 # 의사 시간 추출
 pseudotime_matrix <- slingPseudotime(sds)
 
-# 각 세포에 가장 높은 의사 시간을 가진 궤적을 할당
-cell_lineages <- apply(pseudotime_matrix, 1, function(x) {
-  if (all(is.na(x))) {
-    return(NA)
-  } else {
-    return(names(which.max(x)))
-  }
-})
-
-# 세포별 궤적 정보 추가
-colData(sce_fitted)$lineage <- cell_lineages
-
-# 의사시간 정보 추가 (가장 높은 값을 가진 궤적의 의사시간 사용)
-colData(sce_fitted)$pseudotime <- apply(pseudotime_matrix, 1, max, na.rm = TRUE)
 
 # 세포별 궤적 정보 확인
 print(table(colData(sce_fitted)$lineage))
 
 # 의사시간 정보 확인
 summary(colData(sce_fitted)$pseudotime)
-
-
-
-
 
 
 #### patternTest 수행
