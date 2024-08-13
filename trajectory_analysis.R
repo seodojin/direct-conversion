@@ -3,50 +3,29 @@ library(SingleCellExperiment)
 library(slingshot)
 library(scater)
 library(Seurat)
-library(Rcpp)
 library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(RColorBrewer)
-library(data.table)
 library(Matrix)
+library(dplyr)
 library(tradeSeq)
-library(splines)
-library(org.Hs.eg.db)
-library(clusterProfiler)
-library(enrichplot)
-library(pheatmap)
-library(ComplexHeatmap)
-library(circlize)
 
 # Convert Seurat object to SingleCellExperiment object
-plus <- readRDS("data/seurat_object2")
-str(plus, max.level = 2)
+plus <- readRDS("seurat_object2")
 
-# Extract and merge counts data
-counts_shCtrl <- plus[["RNA"]]$counts.shCtrl
-counts_shPTBP1 <- plus[["RNA"]]$counts.shPTBP1
-counts <- cbind(counts_shCtrl, counts_shPTBP1)
-
-# Extract and merge normalized data
-data_shCtrl <- plus[["RNA"]]$data.shCtrl
-data_shPTBP1 <- plus[["RNA"]]$data.shPTBP1
-data <- cbind(data_shCtrl, data_shPTBP1)
+# Extract and merge counts and normalized data
+counts <- cbind(plus[["RNA"]]$counts.shCtrl, plus[["RNA"]]$counts.shPTBP1)
+data <- cbind(plus[["RNA"]]$data.shCtrl, plus[["RNA"]]$data.shPTBP1)
 
 # Create SingleCellExperiment object
 sce <- SingleCellExperiment(
   assays = list(counts = counts, logcounts = data),
   colData = plus@meta.data,
-  reducedDims = list(PCA = Embeddings(plus, "pca"), UMAP = Embeddings(plus, "umap")))
+  reducedDims = list(PCA = Embeddings(plus, "pca"), UMAP = Embeddings(plus, "umap"))
+)
 
 # Add active identifiers
 sce$cell_type <- plus@active.ident
 
-# Scaling and PCA
-sce <- logNormCounts(sce) # Log normalization (skip if already done)
-sce <- scater::runPCA(sce, exprs_values = "logcounts") 
-
-# Define cluster label update function
+# Update cluster labels
 update_cluster_labels <- function(label) {
   if (label %in% c("GABAergic neurons", "Glutamatergic neurons")) {
     return("Neurons")
@@ -54,20 +33,13 @@ update_cluster_labels <- function(label) {
     return(label)
   }
 }
-
-# Update cluster labels in SingleCellExperiment object
 sce$updated_customclassif <- sapply(sce$customclassif, update_cluster_labels)
-unique_clusters <- unique(sce$updated_customclassif)
-print(unique_clusters)
 
 # Run Slingshot with updated labels
 sds <- slingshot(sce, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
                  start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
-print(sds)
-print(class(sds))
-print(slingLineages(sds))
 
-# Define the color for each lineage based on the correct matching
+# Define the color for each lineage
 lineage_colors <- c("Immature neurons" = "#440154", 
                     "Myofibroblasts" = "#21908c", 
                     "Neurons" = "#fde725")
@@ -103,10 +75,7 @@ for (i in seq_along(slingCurves(sds))) {
                      aes(x = UMAP1, y = UMAP2), color = lineage_colors[end_cluster], linewidth = 1, alpha = 0.7)
 }
 
-print(p)
-
 ggsave("20240806_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
-print(slingLineages(sds))
 
 # Pseudotime violin plot
 set.seed(123)
@@ -127,7 +96,6 @@ plot_data <- data.frame(Cell = common_cells,
                         Pseudotime.Lineage2 = pseudotime_subset$Lineage2, 
                         Pseudotime.Lineage3 = pseudotime_subset$Lineage3)
 
-plot_data$Lineage <- NA
 plot_data <- plot_data %>%
   mutate(Lineage = case_when(
     Cluster == "Myofibroblasts" ~ "Lineage1",
@@ -139,61 +107,71 @@ plot_data <- plot_data %>%
     Lineage == "Lineage1" ~ Pseudotime.Lineage1,
     Lineage == "Lineage2" ~ Pseudotime.Lineage2,
     Lineage == "Lineage3" ~ Pseudotime.Lineage3
-  ))
+  )) %>%
+  select(Cell, Cluster, Lineage, Pseudotime) %>%
+  filter(!is.na(Pseudotime))
 
-# plot_data_long 생성
-plot_data_long <- plot_data %>%
-  select(Cell, Cluster, Lineage, Pseudotime)
-
-# Pseudotime에 따른 클러스터 분포 시각화
-ggplot(plot_data_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+# Create violin plot
+ggplot(plot_data, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
   geom_violin(scale = "width", adjust = 1.5) +
-#  facet_wrap(~ Lineage, scales = "free_y") +
-  labs(title = "Pseudotime vs Cluster", x = "Pseudotime", y = "Cluster") +
+  scale_fill_manual(values = cell_colors) +
+  labs(title = "Pseudotime Distribution by Cluster", x = "Pseudotime", y = "Cluster") +
   theme_minimal() +
-  theme(axis.text.y = element_text(angle = 45, hjust = 1))
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 16),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
 
+# Normalize pseudotime within each cluster
+plot_data_normalized <- plot_data %>%
+  group_by(Cluster) %>%
+  mutate(Normalized_Pseudotime = (Pseudotime - min(Pseudotime)) / (max(Pseudotime) - min(Pseudotime))) %>%
+  ungroup()
 
-# Additional steps for sampled cells and GAM fitting
-set.seed(123)
+# Create violin plot with normalized pseudotime
+ggplot(plot_data_normalized, aes(x = Normalized_Pseudotime, y = Cluster, fill = Cluster)) +
+  geom_violin(scale = "width", adjust = 1.5) +
+  scale_fill_manual(values = cell_colors) +
+  labs(title = "Normalized Pseudotime Distribution by Cluster", x = "Normalized Pseudotime", y = "Cluster") +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
+    axis.text.y = element_text(size = 16),
+    plot.title = element_text(hjust = 0.5, size = 16),
+    axis.title.x = element_text(size = 14),
+    axis.title.y = element_text(size = 14)
+  )
 
-# 각 클러스터의 10%를 선택하여 샘플링
-sampled_cells <- as.data.table(plus@meta.data)[, {
-  num_cells <- .N  # 해당 클러스터의 총 세포 수
-  sample_size <- ceiling(num_cells * 0.1)  # 10%에 해당하는 세포 수 계산
-  .(cell = .I[sample(.N, sample_size)])  # 해당 클러스터에서 샘플링된 세포의 인덱스
-}, by = seurat_clusters]$cell
+ggsave("20240808_normalize_pseudotime_violin_plot.png", width = 7, height = 6, dpi = 1000)
 
-# 샘플링된 세포를 사용하여 Seurat 객체를 서브셋
-plus_sampled <- subset(plus, cells = sampled_cells)
-
-# 샘플링 결과 확인
-table(plus_sampled@meta.data$seurat_clusters)
-
-counts_shCtrl <- plus_sampled[["RNA"]]$counts.shCtrl
-counts_shPTBP1 <- plus_sampled[["RNA"]]$counts.shPTBP1
-counts_sampled <- cbind(counts_shCtrl, counts_shPTBP1)
-counts_sparse_sampled <- as(counts_sampled, "sparseMatrix")
-
+# Filter genes by counts and cells
 min_counts <- 10
 min_cells <- 3
-filtered_counts <- counts_sparse_sampled[rowSums(counts_sparse_sampled >= min_counts) >= min_cells, ]
+counts_sparse <- as(counts, "sparseMatrix")
+filtered_counts <- counts_sparse[rowSums(counts_sparse >= min_counts) >= min_cells, ]
 
-umap_coords <- Embeddings(plus_sampled, reduction = "umap")
-cell_metadata <- plus_sampled@meta.data
-sce_sampled <- SingleCellExperiment(assays = list(counts = filtered_counts), colData = cell_metadata, reducedDims = list(UMAP = umap_coords))
+# Create SingleCellExperiment object for filtered data
+sce_filtered <- SingleCellExperiment(
+  assays = list(counts = filtered_counts, logcounts = logcounts(sce)[rownames(filtered_counts), ]),
+  colData = colData(sce),
+  reducedDims = reducedDims(sce)
+)
 
-sce_sampled$updated_customclassif <- sapply(sce_sampled$customclassif, update_cluster_labels)
+# Run Slingshot with updated labels on filtered data
+sds_filtered <- slingshot(sce_filtered, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
+                          start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
 
-sds_sampled <- slingshot(sce_sampled, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
-                         start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
+# Ensure sds_filtered is a SlingshotDataSet
+sds_filtered <- as.SlingshotDataSet(sds_filtered)
 
-sds <- SlingshotDataSet(sds_sampled)
+# Fit GAM models using the filtered dataset
+sce_fitted <- fitGAM(counts = assay(sce_filtered, "counts"), sds = sds_filtered, nknots = 6, verbose = TRUE, parallel = FALSE)
 
-sce_fitted <- fitGAM(counts = assay(sce_sampled, "counts"), sds = sds, nknots = 6, verbose = TRUE, parallel = FALSE)
-
-metadata(sce_fitted)$slingshot <- sds
-
-saveRDS(list(sce_fitted = sce_fitted, slingshot_data = metadata(sce_fitted)$slingshot), 
-        file = "data/20240802_fitGAM_results010.rds")
-
+# Save fitted GAM results with proper Slingshot data
+metadata(sce_fitted)$slingshot <- sds_filtered
+saveRDS(sce_fitted, file = "20240808_fitGAM_results_full.rds")
