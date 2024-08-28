@@ -1,17 +1,20 @@
-# 필요한 라이브러리 로드
+# Load necessary libraries
 library(SingleCellExperiment)
 library(slingshot)
 library(tradeSeq)
-library(dplyr)
-library(ggplot2)
-library(pheatmap)
+library(tidyverse)
 library(clusterProfiler)
 library(org.Hs.eg.db)
+library(dplyr)
+library(tidyr)
 library(dorothea)
 library(viper)
 library(corrplot)
 library(igraph)
 library(ggraph)
+library(ggplot2)
+library(pheatmap)
+library(VennDiagram)
 
 # 데이터 로드 및 전처리
 loaded_results <- readRDS("20240808_fitGAM_results_full.rds")
@@ -20,238 +23,412 @@ sds <- metadata(sce_fitted)$slingshot
 pseudotime <- slingPseudotime(sds)
 lineages <- slingLineages(sds)
 
-# 리니지 간 패턴 비교 함수
-compare_lineages <- function(lineage1, lineage2) {
-  selected_lineages <- c(lineage1, lineage2)
-  pseudotime_subset <- pseudotime[, selected_lineages]
-  valid_cells <- rownames(pseudotime_subset)[apply(!is.na(pseudotime_subset), 1, all)]
-  sce_fitted_subset <- sce_fitted[, valid_cells]
-  pseudotime_subset <- pseudotime_subset[valid_cells, ]
-  metadata(sce_fitted_subset)$slingshot <- list(pseudotime = pseudotime_subset)
-  
-  pattern_results <- patternTest(sce_fitted_subset)
-  pattern_results$FDR <- p.adjust(pattern_results$pvalue, method = "fdr")
-  significant_genes <- rownames(pattern_results[pattern_results$FDR < 0.005, ])
-  
-  return(significant_genes)
-}
+# Lineage 정보 확인
+table(sce_fitted$Lineage)
 
-# 리니지 1 vs 2 및 2 vs 3 비교
-significant_genes_1_vs_2 <- compare_lineages("Lineage1", "Lineage2")
-significant_genes_2_vs_3 <- compare_lineages("Lineage2", "Lineage3")
+# slingshot 정보 확인
+sds <- metadata(sce_fitted)$slingshot
+str(sds)
 
-# VIPER 분석 함수
-perform_viper_analysis <- function(gene_list) {
-  common_genes <- intersect(rownames(sce_fitted), gene_list)
-  expr_data <- assay(sce_fitted, "counts")[common_genes, ]
-  
-  dorothea_regulon_human <- dorothea_hs %>% dplyr::filter(confidence %in% c("A", "B", "C"))
-  regulon <- dorothea::df2regulon(dorothea_regulon_human)
-  
-  common_genes <- intersect(rownames(expr_data), unique(unlist(lapply(regulon, function(x) names(x$tfmode)))))
-  expr_data_filtered <- expr_data[common_genes, ]
-  
-  tf_activities <- viper::viper(expr_data_filtered, regulon,
-                                method = "none", minsize = 4,
-                                eset.filter = FALSE, verbose = TRUE)
-  
-  return(list(tf_activities = tf_activities, regulon = regulon))
-}
+# 전체 데이터에서 유전자 발현에 대한 association test 수행
+asso_test <- associationTest(sce_fitted)
 
-# VIPER 분석 실행
-viper_results_1_vs_2 <- perform_viper_analysis(significant_genes_1_vs_2)
-viper_results_2_vs_3 <- perform_viper_analysis(significant_genes_2_vs_3)
+# 유의미한 유전자 식별 (p-value를 FDR 방식으로 조정)
+signif_genes <- rownames(asso_test)[which(p.adjust(asso_test$pvalue, method = "fdr") < 0.05)]
 
-# VIPER Network Visualization
-# 결과 시각화 함수
-visualize_tf_activities <- function(tf_activities, title, sample_size = 1000) {
-  set.seed(123)
-  sample_cols <- sample(1:ncol(tf_activities), min(sample_size, ncol(tf_activities)))
-  tf_activities_sampled <- tf_activities[, sample_cols]
-  
-  top_tfs <- sort(rowMeans(tf_activities_sampled), decreasing = TRUE)
-  top_20_tfs <- names(head(top_tfs, 20))
-  
-  tf_activities_mean <- rowMeans(tf_activities_sampled)
-  df <- data.frame(TF = names(tf_activities_mean), Activity = tf_activities_mean)
-  
-  p1 <- ggplot(df, aes(x = reorder(TF, -Activity), y = Activity)) +
-    geom_bar(stat = "identity") +
-    theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
-    labs(title = paste("Mean TF Activities -", title), x = "Transcription Factors", y = "Mean Activity")
-  ggsave(paste0("mean_tf_activities_", gsub(" ", "_", title), ".png"), p1, width = 9, height = 6, dpi = 600)
-  
-  png(paste0("heatmap_top20_tf_activities_", gsub(" ", "_", title), ".png"), width = 6, height = 5, units = "in", res = 600)
-  pheatmap(tf_activities_sampled[top_20_tfs,], show_colnames = FALSE,
-           main = paste("Heatmap of Top 20 TF Activities -", title))
-  dev.off()
-  
-  cor_matrix <- cor(t(tf_activities_sampled[top_20_tfs,]))
-  
-  png(paste0("correlation_top20_tf_activities_", gsub(" ", "_", title), ".png"), width = 6, height = 6, units = "in", res = 600)
-  par(mar = c(4, 4, 6, 2))
-  corrplot(cor_matrix, method = "color", type = "upper",
-           order = "hclust", tl.col = "black", tl.srt = 45)
-  mtext(paste("Correlation of Top 20 TF Activities -", title), side = 3, line = 3, cex = 1.2)
-  dev.off()
-  
-  gc()
-  return(top_20_tfs)
-}
 
-# 시각화 실행
-top_20_tfs_1_vs_2 <- visualize_tf_activities(viper_results_1_vs_2$tf_activities, "Lineage 1 vs 2")
-top_20_tfs_2_vs_3 <- visualize_tf_activities(viper_results_2_vs_3$tf_activities, "Lineage 2 vs 3")
+# slingshot에서 pseudotime 정보 추출
+pseudotime <- slingPseudotime(sds)
 
-# 상위 전사 인자 타겟 분석
-analyze_top_tf_targets <- function(top_tfs, regulon, title) {
-  for (tf in top_tfs[1:5]) {
-    targets <- names(regulon[[tf]]$tfmode)
-    cat("Top targets for", tf, "in", title, ":\n")
-    print(head(targets, 10))
-    cat("\n")
-  }
-}
+# 각 리니지별로 NA가 아닌 pseudotime을 가진 셀들 추출
+lin1_cells <- which(!is.na(pseudotime[, 1]))  # 리니지 1에 속하는 셀
+lin2_cells <- which(!is.na(pseudotime[, 2]))  # 리니지 2에 속하는 셀
+lin3_cells <- which(!is.na(pseudotime[, 3]))  # 리니지 3에 속하는 셀
 
-# 타겟 분석 실행
-analyze_top_tf_targets(top_20_tfs_1_vs_2, viper_results_1_vs_2$regulon, "Lineage 1 vs 2")
-analyze_top_tf_targets(top_20_tfs_2_vs_3, viper_results_2_vs_3$regulon, "Lineage 2 vs 3")
+# 리니지별 유의미한 유전자 추출 (signif_genes는 associationTest 결과에서 나온 유전자들)
+lin1_genes <- signif_genes[lin1_cells]
+lin2_genes <- signif_genes[lin2_cells]
+lin3_genes <- signif_genes[lin3_cells]
 
-# 네트워크 시각화 함수
-visualize_tf_target_network <- function(top_tfs, regulon, title, top_n = 3, max_targets_per_tf = 10, file_name) {
-  edges <- data.frame()
-  
-  for (tf in top_tfs[1:top_n]) {
-    targets <- names(regulon[[tf]]$tfmode)
-    targets <- head(targets, max_targets_per_tf)
-    df <- data.frame(from = rep(tf, length(targets)), to = targets)
-    edges <- rbind(edges, df)
-  }
-  
-  graph <- graph_from_data_frame(edges)
-  
-  plot <- ggraph(graph, layout = 'kk') +
-    geom_edge_link(aes(edge_alpha = 0.8), show.legend = FALSE) +
-    geom_node_point(color = "blue", size = 5) +
-    geom_node_text(aes(label = name), vjust = 1, hjust = 1) +
-    ggtitle(paste("TF-Target Network -", title)) +
-    theme_void()
-  
-  print(plot)
-  ggsave(filename = file_name, plot = plot, width = 10, height = 8, dpi = 300)
-}
+# 리니지별 유의미한 유전자 출력
+head(lin1_genes)
+head(lin2_genes)
+head(lin3_genes)
 
-# 네트워크 시각화 저장
-visualize_tf_target_network(top_20_tfs_1_vs_2, viper_results_1_vs_2$regulon, "Lineage 1 vs 2", top_n = 5, max_targets_per_tf = 5, file_name = "lineage_1_vs_2_network.png")
-visualize_tf_target_network(top_20_tfs_2_vs_3, viper_results_2_vs_3$regulon, "Lineage 2 vs 3", top_n = 5, max_targets_per_tf = 5, file_name = "lineage_2_vs_3_network.png")
+
+# ENTREZID로 변환 (SYMBOL에서)
+lin1_genes_entrez <- bitr(lin1_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+lin2_genes_entrez <- bitr(lin2_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+lin3_genes_entrez <- bitr(lin3_genes, fromType = "SYMBOL", toType = "ENTREZID", OrgDb = org.Hs.eg.db)
+
+# GO Enrichment 분석 (Biological Process)
+ego_lin1 <- enrichGO(gene = lin1_genes_entrez$ENTREZID, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pAdjustMethod = "fdr")
+ego_lin2 <- enrichGO(gene = lin2_genes_entrez$ENTREZID, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pAdjustMethod = "fdr")
+ego_lin3 <- enrichGO(gene = lin3_genes_entrez$ENTREZID, OrgDb = org.Hs.eg.db, keyType = "ENTREZID", ont = "BP", pAdjustMethod = "fdr")
+
+# 결과 시각화 (예: barplot)
+barplot(ego_lin1, showCategory = 10, title = "Lineage 1 GO Enrichment")
+barplot(ego_lin2, showCategory = 10, title = "Lineage 2 GO Enrichment")
+barplot(ego_lin3, showCategory = 10, title = "Lineage 3 GO Enrichment")
 
 
 
-
-# TRRUST 네트워크 시각화 함수
-visualize_trrust_network <- function(tf_genes, title, file_name) {
-  graph <- graph_from_data_frame(tf_genes, directed = FALSE)
-  
-  plot <- ggraph(graph, layout = "kk") +
-    geom_edge_link(aes(edge_alpha = 0.8), color = "grey") +
-    geom_node_point(size = 5, color = "skyblue") +
-    geom_node_text(aes(label = name), vjust = 1.5, hjust = 0.5, size = 4) +
-    theme_void() +
-    labs(title = title) +
-    guides(edge_alpha = "none")
-  
-  print(plot)
-  ggsave(filename = file_name, plot = plot, width = 8, height = 6, dpi = 600)
-}
-
-# Lineage 1 vs 2 데이터 및 시각화
-tf_genes12 <- data.frame(
-  Key_TF = c("RB1", "RB1", "RB1", "MYB", "MYB", "MYB", "RBL1", "RBL1", "NF1", "NF1", "ETS2", "ETS2", "TP53", "TP53", "TP53", "NR3C1", "NR3C1", "HNF4A", "HNF4A", "WT1", "WT1", "AR", "AR", "E2F1", "E2F1", "SP1", "SP1", "SP1", "RELA", "RELA", "NFKB1", "NFKB1"),
-  Gene = c("MYC", "ATF2", "TFDP1", "KLF1", "MYC", "SP3", "TFDP1", "MYC", "SP3", "MYC", "MYC", "ERG", "MYC", "SMAD3", "E2F7", "SRF", "ATF2", "TBP", "MYC", "SMAD3", "MYC", "MYC", "TBP", "ETV4", "MYC", "ATF2", "SP3", "MYC", "MYC", "TBP", "TBP", "MYC")
-)
-
-visualize_trrust_network(tf_genes12, "Network of Key TFs and Overlapped Genes - Lineage 1 vs 2", "20240820_lineage1vs2_trrust_network.png")
-
-# Lineage 2 vs 3 데이터 및 시각화
-tf_genes23 <- data.frame(
-  Key_TF = c("RB1", "RB1", "RB1", "MYB", "MYB", "MYB", "CEBPE", "CEBPE", "MYBL2", "MYBL2", "NF1", "NF1", "HDAC2", "HDAC2", "ETS2", "ETS2", "TP53", "TP53", "TP53", "NR3C1", "NR3C1", "HNF4A", "HNF4A", "CEBPA", "CEBPA", "FOS", "FOS", "GATA1", "GATA1", "WT1", "WT1", "ESR1", "ESR1", "AR", "AR", "JUN", "JUN", "SP1", "SP1", "SP1", "RELA", "RELA", "NFKB1", "NFKB1"),
-  Gene = c("MYC", "ATF2", "SP1", "KLF1", "MYC", "SP3", "SPI1", "MYC", "SP1", "MYC", "SP3", "MYC", "MYC", "SP1", "MYC", "ERG", "MYC", "SMAD3", "E2F7", "SRF", "ATF2", "TBP", "MYC", "SPI1", "MYC", "SPI1", "MYC", "SPI1", "KLF1", "SMAD3", "MYC", "MYC", "SP1", "MYC", "TBP", "SPI1", "MYC", "ATF2", "SP3", "MYC", "MYC", "TBP", "TBP", "MYC")
-)
-
-visualize_trrust_network(tf_genes23, "Network of Key TFs and Overlapped Genes - Lineage 2 vs 3", "20240820_lineage2vs3_trrust_network.png")
-
-
-
-##### trrust GO
-# 유전자 목록 준비 (예시로 tf_genes12 사용)
-genes12 <- unique(c(tf_genes12$Key_TF, tf_genes12$Gene))
-
-# 유전자 이름을 Entrez ID로 변환
-entrez_ids12 <- mapIds(org.Hs.eg.db, keys = genes12, keytype = "SYMBOL", column = "ENTREZID")
-entrez_ids12 <- entrez_ids12[!is.na(entrez_ids12)]
-
-# GO 분석 수행
-go_results12 <- enrichGO(gene = entrez_ids12,
-                       OrgDb = org.Hs.eg.db,
-                       ont = "BP",  # 모든 GO 범주 (BP, CC, MF)
-                       pAdjustMethod = "BH",
-                       pvalueCutoff = 0.05,
-                       qvalueCutoff = 0.05)
-
-# 결과 확인
-head(go_results12)
+# KEGG Pathway Enrichment 분석
+kegg_lin1 <- enrichKEGG(gene = lin1_genes_entrez$ENTREZID, organism = 'hsa', pAdjustMethod = "fdr")
+kegg_lin2 <- enrichKEGG(gene = lin2_genes_entrez$ENTREZID, organism = 'hsa', pAdjustMethod = "fdr")
+kegg_lin3 <- enrichKEGG(gene = lin3_genes_entrez$ENTREZID, organism = 'hsa', pAdjustMethod = "fdr")
 
 # 결과 시각화
-# 상위 10개 GO 용어의 막대 그래프
-barplot(go_results12, showCategory = 15)
-ggsave("TRRUST_lineage1vs2_GO_barplot.png", width = 12, height = 12, dpi=600)
-
-# GO 네트워크 그래프
-# 용어 간 유사성 계산
-library(enrichplot)
-go_results_sim12 <- pairwise_termsim(go_results12)
-
-# GO 네트워크 그래프
-go_network12 <- enrichplot::emapplot(go_results_sim12, showCategory = 20)
-ggsave("TRRUST_lineage1vs2_GO_network.png", plot = go_network12, width = 15, height = 12.5)
-
-
-# 결과를 CSV 파일로 저장
-write.csv(as.data.frame(go_results12), "TRRUST_lineage1vs2_GO_analysis_results.csv", row.names = FALSE)
+barplot(kegg_lin1, showCategory = 10, title = "Lineage 1 KEGG Pathway Enrichment")
+barplot(kegg_lin2, showCategory = 10, title = "Lineage 2 KEGG Pathway Enrichment")
+barplot(kegg_lin3, showCategory = 10, title = "Lineage 3 KEGG Pathway Enrichment")
 
 
 
-# 유전자 목록 준비 (예시로 tf_genes12 사용)
-genes23 <- unique(c(tf_genes23$Key_TF, tf_genes23$Gene))
 
-# 유전자 이름을 Entrez ID로 변환
-entrez_ids23 <- mapIds(org.Hs.eg.db, keys = genes23, keytype = "SYMBOL", column = "ENTREZID")
-entrez_ids23 <- entrez_ids23[!is.na(entrez_ids23)]
+# GO Enrichment barplot을 파일로 저장 (Lineage 1)
+p1 <- barplot(ego_lin1, showCategory = 10, title = "Lineage 1 GO Enrichment")
+ggsave(filename = "20240827_Lineage1_GO_Enrichment.png", plot = p1, dpi = 600, width = 8, height = 6)
 
-# GO 분석 수행
-go_results23 <- enrichGO(gene = entrez_ids23,
-                       OrgDb = org.Hs.eg.db,
-                       ont = "BP",  # 모든 GO 범주 (BP, CC, MF)
-                       pAdjustMethod = "BH",
-                       pvalueCutoff = 0.05,
-                       qvalueCutoff = 0.05)
+# GO Enrichment barplot을 파일로 저장 (Lineage 2)
+p2 <- barplot(ego_lin2, showCategory = 10, title = "Lineage 2 GO Enrichment")
+ggsave(filename = "20240827_Lineage2_GO_Enrichment.png", plot = p2, dpi = 600, width = 8, height = 6)
 
-# 결과 확인
-head(go_results23)
+# GO Enrichment barplot을 파일로 저장 (Lineage 3)
+p3 <- barplot(ego_lin3, showCategory = 10, title = "Lineage 3 GO Enrichment")
+ggsave(filename = "20240827_Lineage3_GO_Enrichment.png", plot = p3, dpi = 600, width = 8, height = 6)
 
-# 결과 시각화
-# 상위 20개 GO 용어의 막대 그래프
-barplot(go_results23, showCategory = 20)
-ggsave("TRRUST_lineage2vs3_GO_barplot.png", width = 12, height = 12, dpi=600)
+# KEGG Pathway barplot을 파일로 저장 (Lineage 1)
+p4 <- dotplot(kegg_lin1, showCategory = 10, title = "Lineage 1 KEGG Pathway Enrichment")
+ggsave(filename = "20240827_Lineage1_KEGG_Enrichment.png", plot = p4, dpi = 600, width = 8, height = 6)
 
-# GO 네트워크 그래프
+# KEGG Pathway barplot을 파일로 저장 (Lineage 2)
+p5 <- dotplot(kegg_lin2, showCategory = 10, title = "Lineage 2 KEGG Pathway Enrichment")
+ggsave(filename = "20240827_Lineage2_KEGG_Enrichment.png", plot = p5, dpi = 600, width = 8, height = 6)
 
-go_results_sim23 <- pairwise_termsim(go_results23)
-
-# GO 네트워크 그래프
-go_network23 <- enrichplot::emapplot(go_results_sim23, showCategory = 20)
-ggsave("TRRUST_lineage2vs3_GO_network.png", plot = go_network23, width = 15, height = 12.5)
+# KEGG Pathway barplot을 파일로 저장 (Lineage 3)
+p6 <- dotplot(kegg_lin3, showCategory = 10, title = "Lineage 3 KEGG Pathway Enrichment")
+ggsave(filename = "20240827_Lineage3_KEGG_Enrichment.png", plot = p6, dpi = 600, width = 8, height = 6)
 
 
-# 결과를 CSV 파일로 저장
-write.csv(as.data.frame(go_results23), "TRRUST_lineage2vs3_GO_analysis_results.csv", row.names = FALSE)
+
+
+
+
+# Venn Diagram 그리기
+# NA 값을 제거한 후 Venn Diagram 그리기
+venn_data <- list(
+  Lineage1 = lin1_genes[!is.na(lin1_genes)],  # NA 제거
+  Lineage2 = lin2_genes[!is.na(lin2_genes)],  # NA 제거
+  Lineage3 = lin3_genes[!is.na(lin3_genes)]   # NA 제거
+)
+
+# Venn Diagram 그리기
+venn.plot <- venn.diagram(
+  venn_data,
+  filename = "20240827_venn_diagram.png", 
+  fill = c("#21908c", "#440154", "#fde725"),
+  alpha = 0.5,
+  cex = 2,
+  cat.cex = 2,
+  cat.col = c("#21908c", "#440154", "#fde725"),
+  cat.pos = c(-30, 30, 0),    
+  cat.dist = c(0.05, 0.05, 0.05) 
+)
+
+# Venn Diagram 출력
+grid::grid.draw(venn.plot)
+
+
+
+# Dorothea regulon 데이터 로드 및 필터링 (human, high confidence)
+regulon_viper <- dorothea::dorothea_hs %>%
+  dplyr::filter(confidence %in% c("A", "B", "C"))  # 신뢰성 높은 regulon만 필터링
+
+# 리니지별로 유의미한 유전자들에 해당하는 전사인자 추출 (리니지 1)
+tf_lin1 <- regulon_viper %>%
+  dplyr::filter(target %in% lin1_genes) %>%
+  dplyr::pull(tf) %>%
+  unique()
+
+# 리니지별로 유의미한 유전자들에 해당하는 전사인자 추출 (리니지 2)
+tf_lin2 <- regulon_viper %>%
+  dplyr::filter(target %in% lin2_genes) %>%
+  dplyr::pull(tf) %>%
+  unique()
+
+# 리니지별로 유의미한 유전자들에 해당하는 전사인자 추출 (리니지 3)
+tf_lin3 <- regulon_viper %>%
+  dplyr::filter(target %in% lin3_genes) %>%
+  dplyr::pull(tf) %>%
+  unique()
+
+# 결과 출력
+cat("Lineage 1 TFs: ", tf_lin1, "\n")
+cat("Lineage 2 TFs: ", tf_lin2, "\n")
+cat("Lineage 3 TFs: ", tf_lin3, "\n")
+
+# 리니지별 전사인자 목록을 파일로 저장
+write.csv(tf_lin1, file = "TF_list_Lineage1.csv", row.names = FALSE)
+write.csv(tf_lin2, file = "TF_list_Lineage2.csv", row.names = FALSE)
+write.csv(tf_lin3, file = "TF_list_Lineage3.csv", row.names = FALSE)
+
+
+# 교집합
+# 리니지 1과 2에서만 겹치는 전사인자
+common_tfs_12 <- intersect(tf_lin1, tf_lin2)
+cat("Lineage 1과 2에서 겹치는 전사인자: ", common_tfs_12, "\n")
+
+# 리니지 1과 3에서만 겹치는 전사인자
+common_tfs_13 <- intersect(tf_lin1, tf_lin3)
+cat("Lineage 1과 3에서 겹치는 전사인자: ", common_tfs_13, "\n")
+
+# 리니지 2와 3에서만 겹치는 전사인자
+common_tfs_23 <- intersect(tf_lin2, tf_lin3)
+cat("Lineage 2와 3에서 겹치는 전사인자: ", common_tfs_23, "\n")
+
+# 차집합
+# 리니지 1에만 있는 전사인자 (리니지 2와 3에 속하지 않음)
+unique_tfs_lin1 <- setdiff(tf_lin1, union(tf_lin2, tf_lin3))
+cat("Lineage 1에만 있는 고유 전사인자: ", unique_tfs_lin1, "\n")
+
+# 리니지 2에만 있는 전사인자 (리니지 1과 3에 속하지 않음)
+unique_tfs_lin2 <- setdiff(tf_lin2, union(tf_lin1, tf_lin3))
+cat("Lineage 2에만 있는 고유 전사인자: ", unique_tfs_lin2, "\n")
+
+# 리니지 3에만 있는 전사인자 (리니지 1과 2에 속하지 않음)
+unique_tfs_lin3 <- setdiff(tf_lin3, union(tf_lin1, tf_lin2))
+cat("Lineage 3에만 있는 고유 전사인자: ", unique_tfs_lin3, "\n")
+
+
+
+
+
+
+# TRRUST에서 얻은 key regulator 데이터를 로드
+key_regulator_data3 <- read.csv("20240827_lineage3.tsv", sep = "\t")
+
+# 네트워크 그래프 생성
+# 데이터 프레임에서 key TF와 관련된 타겟 유전자 연결 정보 추출
+edges3 <- key_regulator_data3 %>%
+  mutate(genes = strsplit(List.of.overlapped.genes, ",")) %>%
+  unnest(genes) %>%
+  dplyr::select(Key.TF, genes)
+
+# 5개 이상의 타겟을 가진 TF만 필터링하여 시각화
+filtered_edges3 <- edges3 %>%
+  group_by(Key.TF) %>%
+  filter(n() > 5)  # 5개 이상의 타겟을 가진 TF
+
+# 필터링된 네트워크 생성
+filtered_net3 <- graph_from_data_frame(filtered_edges3, directed = TRUE)
+
+# 각 노드의 Degree 계산
+node_degree3 <- degree(filtered_net3)
+
+# Degree 값에 따라 필터링 (예: Degree가 2 이상인 노드만 시각화)
+high_degree_nodes3 <- V(filtered_net3)[node_degree3 >= 2]
+
+# 필터링된 서브 네트워크 생성 (Degree 2 이상인 노드만 포함)
+filtered_net_degree3 <- induced_subgraph(filtered_net3, high_degree_nodes3)
+
+# Degree에 따라 노드 색상 설정: Degree가 높을수록 빨간색, 낮으면 파란색
+V(filtered_net_degree3)$color <- ifelse(degree(filtered_net_degree3) > 3, "High Degree", "Low Degree")
+
+# Degree에 따라 노드 크기 조정
+V(filtered_net_degree3)$size <- degree(filtered_net_degree3) * 3
+
+# 네트워크 시각화 (Degree 기반 노드 색상 및 크기 조정)
+ggraph(filtered_net_degree3, layout = "kk") +  # Kamada-Kawai 레이아웃 사용
+  geom_edge_link(aes(edge_alpha = 0.3), edge_width = 0.5, show.legend = FALSE) +  # Edge Alpha 레전드 제거
+  geom_node_point(aes(size = degree(filtered_net_degree3), color = V(filtered_net_degree3)$color)) +  # 노드 크기와 색상 설정
+  geom_node_text(aes(label = name), size = 3, vjust = 1.5, repel = TRUE) +  # 레이블 설정
+  scale_color_manual(values = c("High Degree" = "red", "Low Degree" = "lightblue")) +  # 색상 범례 추가
+  theme_void() +
+  ggtitle("Filtered Key Regulator Network (Lineage 3, Degree-based)") +
+  # 범례 추가: 노드 크기와 색상
+  guides(size = guide_legend("Node Degree"), color = guide_legend("Node Color"))
+
+# 네트워크 그래프를 파일로 저장 (PNG 예시)
+ggsave("20240827_asso_lin3_tfkr.png", width = 10, height = 8, dpi = 600)
+
+
+
+
+
+
+# TRRUST에서 얻은 key regulator 데이터를 로드
+key_regulator_data2 <- read.csv("20240827_lineage2.tsv", sep = "\t")
+
+# 네트워크 그래프 생성
+# 데이터 프레임에서 key TF와 관련된 타겟 유전자 연결 정보 추출
+edges2 <- key_regulator_data2 %>%
+  mutate(genes = strsplit(List.of.overlapped.genes, ",")) %>%
+  unnest(genes) %>%
+  dplyr::select(Key.TF, genes)
+
+# 5개 이상의 타겟을 가진 TF만 필터링하여 시각화
+filtered_edges2 <- edges2 %>%
+  group_by(Key.TF) %>%
+  filter(n() > 5)  # 5개 이상의 타겟을 가진 TF
+
+# 필터링된 네트워크 생성
+filtered_net2 <- graph_from_data_frame(filtered_edges2, directed = TRUE)
+
+# 각 노드의 Degree 계산
+node_degree2 <- degree(filtered_net2)
+
+# Degree 값에 따라 필터링 (예: Degree가 2 이상인 노드만 시각화)
+high_degree_nodes2 <- V(filtered_net2)[node_degree2 >= 2]
+
+# 필터링된 서브 네트워크 생성 (Degree 2 이상인 노드만 포함)
+filtered_net_degree2 <- induced_subgraph(filtered_net2, high_degree_nodes2)
+
+# Degree에 따라 노드 색상 설정: Degree가 높을수록 빨간색, 낮으면 파란색
+V(filtered_net_degree2)$color <- ifelse(degree(filtered_net_degree2) > 3, "High Degree", "Low Degree")
+
+# Degree에 따라 노드 크기 조정
+V(filtered_net_degree2)$size <- degree(filtered_net_degree2) * 3
+
+# 네트워크 시각화 (Degree 기반 노드 색상 및 크기 조정)
+ggraph(filtered_net_degree2, layout = "kk") +  # Kamada-Kawai 레이아웃 사용
+  geom_edge_link(aes(edge_alpha = 0.3), edge_width = 0.5, show.legend = FALSE) +  # Edge Alpha 레전드 제거
+  geom_node_point(aes(size = degree(filtered_net_degree2), color = V(filtered_net_degree2)$color)) +  # 노드 크기와 색상 설정
+  geom_node_text(aes(label = name), size = 3, vjust = 1.5, repel = TRUE) +  # 레이블 설정
+  scale_color_manual(values = c("High Degree" = "red", "Low Degree" = "lightblue")) +  # 색상 범례 추가
+  theme_void() +
+  ggtitle("Filtered Key Regulator Network (Lineage 2, Degree-based)") +
+  # 범례 추가: 노드 크기와 색상
+  guides(size = guide_legend("Node Degree"), color = guide_legend("Node Color"))
+
+# 네트워크 그래프를 파일로 저장 (PNG 예시)
+ggsave("20240827_asso_lin2_tfkr.png", width = 10, height = 8, dpi = 600)
+
+
+
+
+
+
+# TRRUST에서 얻은 key regulator 데이터를 로드
+key_regulator_data1 <- read.csv("20240827_lineage1.tsv", sep = "\t")
+
+# 네트워크 그래프 생성
+# 데이터 프레임에서 key TF와 관련된 타겟 유전자 연결 정보 추출
+edges1 <- key_regulator_data1 %>%
+  mutate(genes = strsplit(List.of.overlapped.genes, ",")) %>%
+  unnest(genes) %>%
+  dplyr::select(Key.TF, genes)
+
+# 5개 이상의 타겟을 가진 TF만 필터링하여 시각화
+filtered_edges1 <- edges1 %>%
+  group_by(Key.TF) %>%
+  filter(n() > 5)  # 5개 이상의 타겟을 가진 TF
+
+# 필터링된 네트워크 생성
+filtered_net1 <- graph_from_data_frame(filtered_edges1, directed = TRUE)
+
+# 각 노드의 Degree 계산
+node_degree1 <- degree(filtered_net1)
+
+# Degree 값에 따라 필터링 (예: Degree가 2 이상인 노드만 시각화)
+high_degree_nodes1 <- V(filtered_net1)[node_degree1 >= 2]
+
+# 필터링된 서브 네트워크 생성 (Degree 2 이상인 노드만 포함)
+filtered_net_degree1 <- induced_subgraph(filtered_net1, high_degree_nodes1)
+
+# Degree에 따라 노드 색상 설정: Degree가 높을수록 빨간색, 낮으면 파란색
+V(filtered_net_degree1)$color <- ifelse(degree(filtered_net_degree1) > 3, "High Degree", "Low Degree")
+
+# Degree에 따라 노드 크기 조정
+V(filtered_net_degree1)$size <- degree(filtered_net_degree1) * 3
+
+# 네트워크 시각화 (Degree 기반 노드 색상 및 크기 조정)
+ggraph(filtered_net_degree1, layout = "kk") +  # Kamada-Kawai 레이아웃 사용
+  geom_edge_link(aes(edge_alpha = 0.3), edge_width = 0.5, show.legend = FALSE) +  # Edge Alpha 레전드 제거
+  geom_node_point(aes(size = degree(filtered_net_degree1), color = V(filtered_net_degree1)$color)) +  # 노드 크기와 색상 설정
+  geom_node_text(aes(label = name), size = 3, vjust = 1.5, repel = TRUE) +  # 레이블 설정
+  scale_color_manual(values = c("High Degree" = "red", "Low Degree" = "lightblue")) +  # 색상 범례 추가
+  theme_void() +
+  ggtitle("Filtered Key Regulator Network (Lineage 1, Degree-based)") +
+  # 범례 추가: 노드 크기와 색상
+  guides(size = guide_legend("Node Degree"), color = guide_legend("Node Color"))
+
+# 네트워크 그래프를 파일로 저장 (PNG 예시)
+ggsave("20240827_asso_lin1_tfkr.png", width = 10, height = 8, dpi = 600)
+
+
+
+
+
+# 함수: 리니지별 허브 노드 식별 및 GO 분석
+analyze_hub_nodes_and_go <- function(key_regulator_data, lineage_name) {
+  
+  # 네트워크 그래프 생성
+  edges <- key_regulator_data %>%
+    mutate(genes = strsplit(List.of.overlapped.genes, ",")) %>%
+    unnest(genes) %>%
+    dplyr::select(Key.TF, genes)
+  
+  # 5개 이상의 타겟을 가진 TF만 필터링하여 시각화
+  filtered_edges <- edges %>%
+    group_by(Key.TF) %>%
+    filter(n() > 5)
+  
+  # 필터링된 네트워크 생성
+  filtered_net <- graph_from_data_frame(filtered_edges, directed = TRUE)
+  
+  # 각 노드의 Degree 계산
+  node_degree <- degree(filtered_net)
+  
+  # Degree 값에 따라 필터링 (예: Degree가 2 이상인 노드만 시각화)
+  high_degree_nodes <- V(filtered_net)[node_degree >= 2]
+  
+  # 필터링된 서브 네트워크 생성 (Degree 2 이상인 노드만 포함)
+  filtered_net_degree <- induced_subgraph(filtered_net, high_degree_nodes)
+  
+  # 허브 노드 식별 (상위 5% Degree 노드)
+  hub_nodes <- V(filtered_net_degree)[degree(filtered_net_degree) > quantile(degree(filtered_net_degree), 0.95)]
+  
+  # 허브 노드의 이름을 추출
+  hub_node_names <- names(hub_nodes)
+  
+  # 허브 노드에 대한 GO 분석 수행
+  ego <- enrichGO(gene = hub_node_names, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP", pAdjustMethod = "fdr")
+  
+  # GO 분석 결과 시각화
+  barplot(ego, showCategory = 10, title = paste("GO Enrichment for Hub Nodes (", lineage_name, ")", sep = ""))
+  
+  # 허브 노드와 GO 결과 반환
+  return(list(hub_nodes = hub_node_names, go_results = ego))
+}
+
+# 리니지 1 분석
+key_regulator_data1 <- read.csv("20240827_lineage1.tsv", sep = "\t")
+result1 <- analyze_hub_nodes_and_go(key_regulator_data1, "Lineage 1")
+
+# 리니지 2 분석
+key_regulator_data2 <- read.csv("20240827_lineage2.tsv", sep = "\t")
+result2 <- analyze_hub_nodes_and_go(key_regulator_data2, "Lineage 2")
+
+# 리니지 3 분석
+key_regulator_data3 <- read.csv("20240827_lineage3.tsv", sep = "\t")
+result3 <- analyze_hub_nodes_and_go(key_regulator_data3, "Lineage 3")
+
+
+# 리니지 1에 대한 GO 분석 결과 시각화
+barplot(result1$go_results, showCategory = 10, title = "GO Enrichment for Hub Nodes (Lineage 1)")
+
+# PNG 파일로 저장
+ggsave("20240827_asso_lineage1_GO.png", width = 10, height = 8, dpi = 600)
+
+# 리니지 2에 대한 GO 분석 결과 시각화
+barplot(result2$go_results, showCategory = 10, title = "GO Enrichment for Hub Nodes (Lineage 2)")
+
+# PNG 파일로 저장
+ggsave("20240827_asso_lineage2_GO.png", width = 10, height = 8, dpi = 600)
+
+# 리니지 3에 대한 GO 분석 결과 시각화
+barplot(result3$go_results, showCategory = 10, title = "GO Enrichment for Hub Nodes (Lineage 3)")
+
+# PNG 파일로 저장
+ggsave("20240827_asso_lineage3_GO.png", width = 10, height = 8, dpi = 600)
