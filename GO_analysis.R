@@ -13,6 +13,7 @@ sce_fitted <- readRDS("20240910_post_fitGAM.rds")
 sds_filtered <- readRDS("slingshot_obj.rds")
 imputed_pseudotime <- readRDS("pseudotime.rds")
 balanced_weights <- readRDS("cell_weights.rds")
+balanced_counts <- readRDS("balanced_counts.rds")
 
 # Lineage 할당 (가중치 기반으로 가장 강한 리니지 선택)
 lineage_assignment <- apply(balanced_weights, 1, which.max)
