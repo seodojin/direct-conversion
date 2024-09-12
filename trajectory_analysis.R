@@ -274,3 +274,6 @@ saveRDS(imputed_pseudotime, file = "pseudotime.rds")
 
 # cell weights 저장
 saveRDS(balanced_weights, file = "cell_weights.rds")
+
+# balanced_counts 객체를 RDS 파일로 저장
+saveRDS(balanced_counts, file = "balanced_counts.rds")
