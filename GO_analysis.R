@@ -12,11 +12,11 @@ library(enrichplot)
 sce_fitted <- readRDS("20240910_post_fitGAM.rds")
 sds_filtered <- readRDS("slingshot_obj.rds")
 imputed_pseudotime <- readRDS("pseudotime.rds")
-balanced_weights <- readRDS("cell_weights.rds")
-balanced_counts <- readRDS("balanced_counts.rds")
+cell_weights <- readRDS("cell_weights.rds")
+final_counts <- readRDS("final_counts.rds")
 
 # Lineage 할당 (가중치 기반으로 가장 강한 리니지 선택)
-lineage_assignment <- apply(balanced_weights, 1, which.max)
+lineage_assignment <- apply(cell_weights, 1, which.max)
 
 # 리니지별 세포 수 계산 및 출력
 lineage_counts <- table(lineage_assignment)
@@ -24,9 +24,9 @@ cat("리니지별 세포 수:\n")
 print(lineage_counts)
 
 # 각 리니지에 속한 세포들 확인
-weights_lineage_1 <- balanced_weights[, "Lineage1"]
-weights_lineage_2 <- balanced_weights[, "Lineage2"]
-weights_lineage_3 <- balanced_weights[, "Lineage3"]
+weights_lineage_1 <- cell_weights[, "Lineage1"]
+weights_lineage_2 <- cell_weights[, "Lineage2"]
+weights_lineage_3 <- cell_weights[, "Lineage3"]
 
 # 각 리니지에서 가장 높은 가중치를 가진 세포들 선택
 cells_lineage_1_strict <- which(weights_lineage_1 > weights_lineage_2 & weights_lineage_1 > weights_lineage_3)
@@ -46,14 +46,13 @@ cat("리니지 1과 2의 교집합 세포 수:", length(common_cells_12), "\n")
 cat("리니지 1과 3의 교집합 세포 수:", length(common_cells_13), "\n")
 cat("리니지 2와 3의 교집합 세포 수:", length(common_cells_23), "\n")
 
-
 ###############################
 ### 리니지 1과 2에 대한 분석 ###
 ###############################
 
 # Lineage 1과 2의 가중치(weight) 추출
-weights_lineage_1 <- balanced_weights[, "Lineage1"]
-weights_lineage_2 <- balanced_weights[, "Lineage2"]
+weights_lineage_1 <- cell_weights[, "Lineage1"]
+weights_lineage_2 <- cell_weights[, "Lineage2"]
 
 # Lineage 1에서 더 높은 가중치를 가진 세포를 선택
 cells_lineage_1_strict <- which(weights_lineage_1 > weights_lineage_2)
@@ -76,7 +75,7 @@ cells_lineage_1_2_strict <- c(cells_lineage_1_strict, cells_lineage_2_strict)
 sce_fitted_1_2_strict <- sce_fitted[, cells_lineage_1_2_strict]
 
 # 발현이 거의 없는 유전자를 제거 (발현이 0인 유전자는 제외)
-valid_genes_strict <- rowSums(assay(sce_fitted_1_2_strict, "counts")) > 0
+valid_genes_strict <- rowSums(assay(sce_fitted_1_2_strict, "counts")) > 10
 sce_fitted_1_2_strict <- sce_fitted_1_2_strict[valid_genes_strict, ]
 
 # patternTest 실행: 유전자 발현 패턴 분석
@@ -96,18 +95,15 @@ cat("리니지 1과 2에서 유의미한 유전자 목록:\n")
 print(significant_genes_1_2_list)
 
 # 유의미한 유전자 목록을 CSV 파일로 저장
-write.csv(significant_genes_1_2_list, file = "significant_genes_1_2_strict.csv", row.names = FALSE)
-
-
-
+write.csv(significant_genes_1_2_list, file = "20240917_significant_genes_1_2_strict.csv", row.names = FALSE)
 
 #############################################
 ### 리니지 2과 3에 대한 분석 및 시각화 ###
 #############################################
 
 # Lineage 2와 3의 가중치(weight) 추출
-weights_lineage_2 <- balanced_weights[, "Lineage2"]
-weights_lineage_3 <- balanced_weights[, "Lineage3"]
+weights_lineage_2 <- cell_weights[, "Lineage2"]
+weights_lineage_3 <- cell_weights[, "Lineage3"]
 
 # Lineage 2와 3에 더 강하게 속한 세포 선택
 cells_lineage_2_strict <- which(weights_lineage_2 > weights_lineage_3)
@@ -126,7 +122,7 @@ cells_lineage_2_3_strict <- c(cells_lineage_2_strict, cells_lineage_3_strict)
 sce_fitted_2_3_strict <- sce_fitted[, cells_lineage_2_3_strict]
 
 # 발현이 거의 없는 유전자 제거
-valid_genes_strict <- rowSums(assay(sce_fitted_2_3_strict, "counts")) > 0
+valid_genes_strict <- rowSums(assay(sce_fitted_2_3_strict, "counts")) > 10
 sce_fitted_2_3_strict <- sce_fitted_2_3_strict[valid_genes_strict, ]
 
 # patternTest 실행
@@ -144,10 +140,7 @@ cat("리니지 2와 3에서 유의미한 유전자 목록:\n")
 print(significant_genes_2_3_list)
 
 # 유전자 목록을 CSV로 저장
-write.csv(significant_genes_2_3_list, file = "significant_genes_2_3_strict.csv", row.names = FALSE)
-
-
-
+write.csv(significant_genes_2_3_list, file = "20240917_significant_genes_2_3_strict.csv", row.names = FALSE)
 
 ##################################
 ### 교집합 및 차집합 계산 ###
@@ -167,7 +160,6 @@ cat("리니지 2-3에만 있는 유전자 수:", length(diff_2_3_only), "\n")
 cat("리니지 1-2에만 있는 유전자 목록:\n", diff_1_2_only, "\n")
 cat("리니지 2-3에만 있는 유전자 목록:\n", diff_2_3_only, "\n")
 
-
 ###############################################
 ### GO 및 KEGG pathway 분석 (리니지 차집합) ###
 ###############################################
@@ -184,11 +176,32 @@ kegg_results_2_3 <- enrichKEGG(gene = gene_list_2_3$ENTREZID, organism = 'hsa', 
 
 # GO 및 KEGG 분석 결과 시각화
 dotplot(go_results_1_2, title = "GO terms for lineage 1-2 specific genes")
+ggsave("20240920_GOdotplot12.png", plot = dotplot(go_results_1_2, title = "GO terms for lineage 1-2 specific genes"), width = 8, height = 6, units = "in", dpi = 600)
 dotplot(go_results_2_3, title = "GO terms for lineage 2-3 specific genes")
+ggsave("20240920_GOdotplot23.png", plot = dotplot(go_results_2_3, title = "GO terms for lineage 2-3 specific genes"), width = 8, height = 6, units = "in", dpi = 600)
 dotplot(kegg_results_1_2, title = "KEGG Pathways for lineage 1-2 specific genes")
+ggsave("20240917_dotplot12.png", plot = dotplot(kegg_results_1_2, title = "KEGG Pathways for lineage 1-2 specific genes"), width = 8, height = 6, units = "in", dpi = 600)
 dotplot(kegg_results_2_3, title = "KEGG Pathways for lineage 2-3 specific genes")
-ggsave("20240910_dotplot23.png", plot = dotplot(kegg_results_2_3, title = "KEGG Pathways for lineage 2-3 specific genes"), width = 8, height = 6, units = "in", dpi = 600)
+ggsave("20240917_dotplot23.png", plot = dotplot(kegg_results_2_3, title = "KEGG Pathways for lineage 2-3 specific genes"), width = 8, height = 6, units = "in", dpi = 600)
 
+# GO 및 KEGG 분석 결과의 유사성 계산
+go_results_1_2_sim <- pairwise_termsim(go_results_1_2)
+go_results_2_3_sim <- pairwise_termsim(go_results_2_3)
+kegg_results_1_2_sim <- pairwise_termsim(kegg_results_1_2)
+kegg_results_2_3_sim <- pairwise_termsim(kegg_results_2_3)
+
+# Emapplot (유사성 네트워크 시각화) 생성
+emapplot(go_results_1_2_sim, showCategory = 10)
+ggsave("20240920_GOemapplot12.png", plot = last_plot(), width = 8, height = 6, units = "in", dpi = 600)
+
+emapplot(go_results_2_3_sim, showCategory = 10)
+ggsave("20240920_GOemapplot23.png", plot = last_plot(), width = 8, height = 6, units = "in", dpi = 600)
+
+emapplot(kegg_results_1_2_sim, showCategory = 10)
+ggsave("20240920_KEGGemapplot12.png", plot = last_plot(), width = 8, height = 6, units = "in", dpi = 600)
+
+emapplot(kegg_results_2_3_sim, showCategory = 10)
+ggsave("20240920_KEGGemapplot23.png", plot = last_plot(), width = 8, height = 6, units = "in", dpi = 600)
 
 ############################################
 ### 신경 관련 경로에서 유전자 발현 시각화 ###
@@ -200,46 +213,9 @@ kegg_gene_sets <- setReadable(kegg_results_2_3, OrgDb = org.Hs.eg.db, keyType = 
 # 데이터 프레임으로 변환하여 'kegg_gene_sets_df'로 저장
 kegg_gene_sets_df <- as.data.frame(kegg_gene_sets)
 
-# 신경 관련 경로에서 특정 유전자 추출 (예: Parkinson disease 경로)
-neuro_genes <- kegg_gene_sets_df[kegg_gene_sets_df$Description == "Parkinson disease", "geneID"]
-# 신경 관련 경로에서 특정 유전자 추출 (예: Amyotrophic lateral sclerosis 경로)
-neuro_genes_als <- kegg_gene_sets_df[kegg_gene_sets_df$Description == "Amyotrophic lateral sclerosis", "geneID"]
-
-# 유전자 ID들을 분리하여 고유한 유전자 목록 추출
-neuro_genes <- unique(unlist(strsplit(neuro_genes, "/")))
-# 유전자 ID들을 분리하여 고유한 유전자 목록 추출
-neuro_genes_als <- unique(unlist(strsplit(neuro_genes_als, "/")))
-
-# 추출된 신경 관련 유전자 목록 확인
-print(neuro_genes)
-# 추출된 신경 관련 유전자 목록 확인
-print(neuro_genes_als)
-
-# 신경 관련 유전자의 발현 패턴을 PNG 파일로 저장
-for (gene in neuro_genes) {
-  png(paste0(gene, "_expression_pattern.png"), width = 800, height = 600)
-  print(plotSmoothers(sce_fitted, counts = balanced_counts, gene = gene))
-  dev.off()
-}
-
-# 신경 관련 유전자의 발현 패턴을 PNG 파일로 저장
-for (gene in neuro_genes_als) {
-  png(paste0(gene, "_expression_pattern_als.png"), width = 800, height = 600)
-  print(plotSmoothers(sce_fitted, counts = balanced_counts, gene = gene))
-  dev.off()
-}
-
-# 특정 유전자 발현 패턴 화면 출력
-gene <- "MAP1LC3B"
-print(plotSmoothers(sce_fitted, counts = balanced_counts, gene = gene))
-
-
-
-
-
 # KEGG 경로 분석 결과에서 신경 퇴행성 질환에 해당하는 유전자 목록 추출
-neuro_diseases <- c("Parkinson disease", "Amyotrophic lateral sclerosis",
-                    "Huntington disease", "Prion disease",
+neuro_diseases <- c("Parkinson disease", 
+                    "Alzheimer disease", "Prion disease",
                     "Pathways of neurodegeneration - multiple diseases")
 
 # 각 질환별 유전자 목록 추출
@@ -260,3 +236,73 @@ for (disease in neuro_diseases) {
 
 # Parkinson, ALS, Huntington, Prion, Neurodegeneration 유전자 목록 확인
 print(neuro_genes_list)
+
+# 특정 유전자를 정의
+gene <- "NDUFB2"  # 분석하고자 하는 유전자
+
+# plotSmoothers로 시각화한 ggplot 객체를 저장
+p <- plotSmoothers(sce_fitted, counts = final_counts, gene = gene)
+
+# y축 범위를 조정한 그래프에 유전자 이름을 제목으로 추가
+p_adjusted <- p + 
+  scale_y_continuous(limits = c(1, 1.5)) +  # y축 범위 설정
+  labs(title = paste("Gene Expression Pattern for", gene))  # 유전자 이름을 제목으로 추가
+
+# 그래프 저장
+ggsave("20240924_gene_expression_plot.png", plot = p_adjusted, width = 8, height = 6, dpi = 600)
+
+# 특정 유전자를 정의
+gene2 <- "UQCRB"  # 분석하고자 하는 유전자
+
+# plotSmoothers로 시각화한 ggplot 객체를 저장
+p2 <- plotSmoothers(sce_fitted, counts = final_counts, gene = gene2)
+
+# y축 범위를 조정한 그래프에 유전자 이름을 제목으로 추가
+p2_adjusted <- p2 + 
+  scale_y_continuous(limits = c(1.2, 1.6)) +  # y축 범위 설정
+  labs(title = paste("Gene Expression Pattern for", gene2))  # 유전자 이름을 제목으로 추가
+
+# 그래프 저장
+ggsave("20240924_gene_expression_plot2.png", plot = p2_adjusted, width = 8, height = 6, dpi = 600)
+
+# 특정 유전자를 정의
+gene3 <- "PTGS2"  # 분석하고자 하는 유전자
+
+# plotSmoothers로 시각화한 ggplot 객체를 저장
+p3 <- plotSmoothers(sce_fitted, counts = final_counts, gene = gene3)
+
+# y축 범위를 조정한 그래프에 유전자 이름을 제목으로 추가
+p3_adjusted <- p3 + 
+  scale_y_continuous(limits = c(0, 1.7)) +  # y축 범위 설정
+  labs(title = paste("Gene Expression Pattern for", gene3))  # 유전자 이름을 제목으로 추가
+
+# 그래프 저장
+ggsave("20240924_gene_expression_plot3.png", plot = p3_adjusted, width = 8, height = 6, dpi = 600)
+
+# 특정 유전자를 정의
+gene4 <- "COX7C"  # 분석하고자 하는 유전자
+
+# plotSmoothers로 시각화한 ggplot 객체를 저장
+p4 <- plotSmoothers(sce_fitted, counts = final_counts, gene = gene4)
+
+# y축 범위를 조정한 그래프에 유전자 이름을 제목으로 추가
+p4_adjusted <- p4 + 
+  scale_y_continuous(limits = c(1.2, 1.6)) +  # y축 범위 설정
+  labs(title = paste("Gene Expression Pattern for", gene4))  # 유전자 이름을 제목으로 추가
+
+# 그래프 저장
+ggsave("20240924_gene_expression_plot4.png", plot = p4_adjusted, width = 8, height = 6, dpi = 600)
+
+# 특정 유전자를 정의
+gene5 <- "COX6C"  # 분석하고자 하는 유전자
+
+# plotSmoothers로 시각화한 ggplot 객체를 저장
+p5 <- plotSmoothers(sce_fitted, counts = final_counts, gene = gene5)
+
+# y축 범위를 조정한 그래프에 유전자 이름을 제목으로 추가
+p5_adjusted <- p5 + 
+  scale_y_continuous(limits = c(1.2, 1.6)) +  # y축 범위 설정
+  labs(title = paste("Gene Expression Pattern for", gene5))  # 유전자 이름을 제목으로 추가
+
+# 그래프 저장
+ggsave("20240924_gene_expression_plot5.png", plot = p5_adjusted, width = 8, height = 6, dpi = 600)
