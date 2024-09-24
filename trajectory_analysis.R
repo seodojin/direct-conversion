@@ -265,7 +265,7 @@ density_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, fill = Cluster, weig
 print(density_plot)
 
 # 그림을 600dpi로 저장
-ggsave("20240920_pseudotime_vs_cluster_weights.png", plot = density_plot, dpi = 600, width = 8, height = 12)
+ggsave("20240920_pseudotime_vs_cluster_weights.png", plot = density_plot, dpi = 600, width = 8, height = 6)
 
 ##########################################################
 
