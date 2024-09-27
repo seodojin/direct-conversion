@@ -200,8 +200,6 @@ print(dim(final_pseudotime))
 print(dim(final_weights))
 print(dim(final_counts))
 
-###########################################################
-
 # 0과 1 사이로 유사시간을 정규화
 normalize_pseudotime <- function(pseudotime) {
   apply(pseudotime, 2, function(x) {
@@ -228,7 +226,7 @@ imputed_pseudotime <- complete(imputed_data, action = 1)
 # 대체된 pseudotime 확인
 head(imputed_pseudotime)
 
-#######################################################
+####################################
 
 # 유효한 세포의 인덱스에 해당하는 클러스터 정보 추출
 valid_clusters <- sce_filtered$updated_customclassif[valid_cells]
@@ -241,39 +239,129 @@ pseudotime_long <- data.frame(
   Cluster = valid_clusters  # 각 세포가 속한 클러스터 정보
 )
 
+###################################### 20240927
+# Define the color for each lineage based on the correct matching
+lineage_colors <- c("Immature neurons" = "red", 
+                    "Myofibroblasts" = "green", 
+                    "Neurons" = "blue")
 
-# 밀도 기반 플롯 생성 (4x1 배치)
-
+# 세포 유형별 색상 지정
 cluster_colors <- c("Immature neurons" = "#00bef3", 
-                    "Myofibroblasts" = "#ff8c8c", 
-                    "Fibroblasts" = "#19c3a3", 
-                    "Neurons" = "#d4a600")
+                 "Myofibroblasts" = "#ff8c8c", 
+                 "Fibroblasts" = "#19c3a3", 
+                 "Neurons" = "#d4a600")
 
+# UMAP 좌표 추출
+umap_coords <- reducedDims(sce)$UMAP
+plot_data <- data.frame(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2], CellType = sce$updated_customclassif)
+
+# UMAP에 세포 유형별로 점을 그리기
+umap_plot <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
+  geom_point(size = 0.5, alpha = 0.6) +
+  scale_color_manual(values = cluster_colors) +
+  theme_minimal() +
+  labs(title = "Cell Types with Trajectories") +
+  theme(
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 14)
+  ) +
+  guides(color = guide_legend(override.aes = list(size = 6)))
+
+# Slingshot 궤적 추가 (각 리니지에 맞는 색상 적용)
+for (i in seq_along(slingCurves(sds_new))) {
+  curve_data <- slingCurves(sds_new)[[i]]$s[slingCurves(sds_new)[[i]]$ord, ]
+  end_cluster <- slingLineages(sds_new)[[i]][length(slingLineages(sds_new)[[i]])]
+  end_cluster_cells <- which(sce$updated_customclassif == end_cluster)
+  end_point <- colMeans(umap_coords[end_cluster_cells,])
+  distances <- sqrt(rowSums((curve_data - matrix(end_point, nrow = nrow(curve_data), ncol = 2, byrow = TRUE))^2))
+  closest_point <- which.min(distances)
+  
+  # 각 리니지 궤적을 설정된 색상으로 그리기
+  umap_plot <- umap_plot + geom_path(data = data.frame(UMAP1 = curve_data[1:closest_point, 1], UMAP2 = curve_data[1:closest_point, 2]),
+                                     aes(x = UMAP1, y = UMAP2), color = lineage_colors[end_cluster], linewidth = 1, alpha = 0.7)
+}
+
+# UMAP 플롯 저장
+ggsave("20240927_umap_plot_with_trajectories.png", plot = umap_plot, width = 8, height = 6, dpi = 600)
+
+############
+
+# 밀도 기반 플롯 생성
 density_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, fill = Cluster, weight = CellWeights)) +
   geom_density(alpha = 0.7) +
-  scale_fill_manual(values = cluster_colors) +  
-  facet_grid(Cluster ~ ., scales = "free_y") +  # 각 클러스터를 행으로 설정하여 4x1 배치로 변경
+  scale_fill_manual(values = cluster_colors) +
+  facet_grid(Cluster ~ ., scales = "free_y") +
   labs(
     title = "Pseudotime Progression Along Differentiation Trajectories",
-    x = "Pseudotime",
+    x = "Normalized Pseudotime",
     y = "Density"
   ) +
   theme_minimal() +
   theme(legend.position = "none")
 
-# 플롯 확인
+# 밀도 플롯 출력
 print(density_plot)
+# 확률 밀도 플롯 저장
+ggsave("20240927_density_plot.png", plot = density_plot, width = 8, height = 6, dpi = 600)
 
-# 그림을 600dpi로 저장
-ggsave("20240920_pseudotime_vs_cluster_weights.png", plot = density_plot, dpi = 600, width = 8, height = 6)
+##############
+
+# 유사시간을 일정 구간으로 나누기
+pseudotime_long$PseudotimeBin <- cut(pseudotime_long$Pseudotime, breaks = 8)
+
+# 유사시간 구간별 세포 수 계산
+cell_counts_per_bin <- as.data.frame(table(pseudotime_long$PseudotimeBin, pseudotime_long$Cluster))
+colnames(cell_counts_per_bin) <- c("PseudotimeBin", "CellType", "Count")
+
+# 바 플롯 생성
+bar_plot <- ggplot(cell_counts_per_bin, aes(x = PseudotimeBin, y = Count, fill = CellType)) +
+  geom_bar(stat = "identity", position = "stack") +  # stack으로 세포 유형 쌓아서 표시
+  scale_fill_manual(values = cluster_colors) +
+  labs(
+    title = "Number of Cells Across Pseudotime",
+    x = "Normalized Pseudotime",
+    y = "Number of Cells"
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14),
+    legend.position = "bottom" 
+  )
+
+# 바 플롯 출력
+print(bar_plot)
+# 실제 세포 갯수 바 플롯 저장
+ggsave("20240927_bar_plot.png", plot = bar_plot, width = 8, height = 6, dpi = 600)
+
+#######################
+
+# 바이올린 플롯 생성
+violin_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+  geom_violin(scale = "width", trim = FALSE) +  
+  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +  # 세포 위치를 점으로 추가
+  scale_fill_manual(values = cluster_colors) +
+  labs(
+    title = "The Changes of Cellular Density Over Normalized Pseudotime",
+    x = "Normalized Pseudotime",
+    y = "Cell Type"
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14),
+    legend.position = "none"
+  )
+
+# 바이올린 플롯 출력
+print(violin_plot)
+ggsave("20240927_violin_plot.png", plot = violin_plot, width = 9, height = 6, dpi = 600)
 
 ##########################################################
 
 # 대체된 pseudotime을 사용하여 fitGAM 실행
 sce_fitted <- fitGAM(
-  counts = final_counts,  # balanced_counts 대신 final_counts 사용
+  counts = final_counts,  
   pseudotime = imputed_pseudotime,
-  cellWeights = final_weights,  # balanced_weights 대신 final_weights 사용
+  cellWeights = final_weights,  
   nknots = 5,    # 궤적에 대한 매끄러움을 조절하는 매개변수
   verbose = TRUE,
   parallel = FALSE
@@ -282,19 +370,25 @@ sce_fitted <- fitGAM(
 ######################################################
 # 각 세포를 가장 높은 가중치를 가진 리니지에 할당
 lineage_assignment <- apply(final_weights, 1, which.max)  
+
 # 리니지별 세포 수 계산
 lineage_counts <- table(lineage_assignment)
+
 # 결과 출력
 print("리니지별 세포 수:")
 print(lineage_counts)
 
 # fitGAM 결과 저장
-saveRDS(sce_fitted, file = "20240910_post_fitGAM.rds")
+saveRDS(sce_fitted, file = "20240927_post_fitGAM.rds")
+
 # Slingshot 객체 저장
 saveRDS(sds_filtered, file = "slingshot_obj.rds")
+
 # pseudotime 저장
 saveRDS(imputed_pseudotime, file = "pseudotime.rds")
+
 # cell weights 저장
 saveRDS(final_weights, file = "cell_weights.rds")  
+
 # counts 객체 저장
 saveRDS(final_counts, file = "final_counts.rds")  
