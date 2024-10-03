@@ -16,13 +16,13 @@ This repository contains scripts for data processing, analysis and figure genera
 
 -   Load and cluster the data, assign cell types, and automatically detect the tissue type of the dataset.
 
-**DE_analysis.R**
-
--   Perform DE analysis within the same cell type across conditions. - neural clusters vs. other clusters
-
 **Trajectory_analysis.R**
 
--   Run principal component analysis, calculate pseudotime, and perform trajectory analysis with Slingshot.
+-   trajectory analysis using Slingshot on shPTBP1-treated cells, calculated and visualized the pseudotime and lineage-specific weights of cells.
+
+**DE_analysis.R**
+
+-   Analyze significant gene expression patterns across lineages with GO and KEGG pathway analysis.
 
 ## Data availability
 

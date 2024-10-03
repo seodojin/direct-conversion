@@ -1,88 +1,264 @@
-# Load necessary libraries
+# 필요한 라이브러리 로드
 library(SingleCellExperiment)
 library(slingshot)
-library(scater)
-library(Seurat)
-library(Rcpp)
-library(ggplot2)
-library(dplyr)
-library(tidyr)
-library(RColorBrewer)
-library(data.table)
 library(Matrix)
 library(tradeSeq)
-library(splines)
-library(org.Hs.eg.db)
-library(clusterProfiler)
-library(enrichplot)
-library(pheatmap)
-library(ComplexHeatmap)
-library(circlize)
+library(Seurat)
+library(clusterExperiment)
+library(scater)
+library(dplyr)
+library(mice)
+library(tidyr)
+library(ggplot2)
+library(ggridges)
 
-# Convert Seurat object to SingleCellExperiment object
+# Seurat 객체 불러오기 및 SingleCellExperiment 변환
 plus <- readRDS("seurat_object2")
-str(plus, max.level = 2)
 
-# Extract and merge counts data
-counts_shCtrl <- plus[["RNA"]]$counts.shCtrl
-counts_shPTBP1 <- plus[["RNA"]]$counts.shPTBP1
-counts <- cbind(counts_shCtrl, counts_shPTBP1)
+# Seurat 객체에서 meta.data에서 shPTBP1에 해당하는 세포만 선택
+shPTBP1_cells <- rownames(plus@meta.data[plus@meta.data$orig.ident == "shPTBP1", ])
 
-# Extract and merge normalized data
-data_shCtrl <- plus[["RNA"]]$data.shCtrl
-data_shPTBP1 <- plus[["RNA"]]$data.shPTBP1
-data <- cbind(data_shCtrl, data_shPTBP1)
+# 선택된 shPTBP1 세포들에 대한 RNA 카운트 및 정규화 데이터 추출
+counts_shPTBP1 <- plus[["RNA"]]$counts.shPTBP1[, shPTBP1_cells]
+data_shPTBP1 <- plus[["RNA"]]$data.shPTBP1[, shPTBP1_cells]
 
-# Create SingleCellExperiment object
-sce <- SingleCellExperiment(
-  assays = list(counts = counts, logcounts = data),
-  colData = plus@meta.data,
-  reducedDims = list(PCA = Embeddings(plus, "pca"), UMAP = Embeddings(plus, "umap")))
+# 필터링된 메타데이터
+meta_data_shPTBP1 <- plus@meta.data[shPTBP1_cells, ]
 
-# Add active identifiers
-sce$cell_type <- plus@active.ident
+# 필터링된 PCA 및 UMAP 차원 축소 결과
+pca_shPTBP1 <- Embeddings(plus, "pca")[shPTBP1_cells, ]
+umap_shPTBP1 <- Embeddings(plus, "umap")[shPTBP1_cells, ]
 
-# Scaling and PCA
-sce <- logNormCounts(sce) # Log normalization (skip if already done)
-sce <- scater::runPCA(sce, exprs_values = "logcounts") 
+# 필터링된 데이터를 사용하여 SingleCellExperiment 객체 생성
+sce_shPTBP1 <- SingleCellExperiment(
+  assays = list(counts = counts_shPTBP1, logcounts = data_shPTBP1),
+  colData = meta_data_shPTBP1,
+  reducedDims = list(PCA = pca_shPTBP1, UMAP = umap_shPTBP1)
+)
 
-# Define cluster label update function
-update_cluster_labels <- function(label) {
+# 필터링된 SCE 객체 확인
+sce_shPTBP1
+
+sce <- sce_shPTBP1
+
+# 신경세포(GABAergic 및 Glutamatergic neurons)를 "Neurons"로 통합하고 나머지는 기존 라벨 유지
+sce$updated_customclassif <- sapply(sce$customclassif, function(label) {
   if (label %in% c("GABAergic neurons", "Glutamatergic neurons")) {
     return("Neurons")
   } else {
     return(label)
   }
+})
+
+# Slingshot을 사용하여 세포 궤적 분석 수행, 섬유아세포를 시작점으로 설정
+sds <- slingshot(sce, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
+                         start.clus = "Fibroblasts", end.clus = c("Myofibroblasts", "Immature neurons", "Neurons"))
+
+# 유사시간(pseudotime)과 각 리니지에 대한 세포 가중치(cell weights)를 추출
+pseudotime <- as.data.frame(slingPseudotime(sds))
+cell_weights <- slingCurveWeights(sds)
+
+# Fibroblasts는 무작위로 리니지를 할당하고, 나머지 세포는 가중치가 가장 높은 리니지에 할당
+pseudotime$MainLineage <- sapply(seq_len(nrow(pseudotime)), function(i) {
+  if (sce$updated_customclassif[i] == "Fibroblasts") {
+    return(sample(c("Lineage1", "Lineage2", "Lineage3"), 1))  # Fibroblasts는 무작위로 리니지 할당
+  } else {
+    lineages <- which(!is.na(pseudotime[i, ]))
+    cell_weights_row <- cell_weights[i, lineages]
+    main_lineage <- lineages[which.max(cell_weights_row)]
+    return(paste0("Lineage", main_lineage))
+  }
+})
+
+# Pseudotime 정규화 함수 정의
+normalize_pseudotime <- function(pseudotime) {
+  apply(pseudotime, 2, function(x) {
+    valid_idx <- !is.na(x)
+    x[valid_idx] <- (x[valid_idx] - min(x[valid_idx])) / (max(x[valid_idx]) - min(x[valid_idx]))
+    return(x)
+  })
 }
 
-# Update cluster labels in SingleCellExperiment object
-sce$updated_customclassif <- sapply(sce$customclassif, update_cluster_labels)
-unique_clusters <- unique(sce$updated_customclassif)
-print(unique_clusters)
+# 각 리니지의 유사시간을 0과 1 사이로 정규화
+filtered_pseudotime <- pseudotime[, c("Lineage1", "Lineage2", "Lineage3")]
+normalized_pseudotime <- normalize_pseudotime(filtered_pseudotime)
 
-# Run Slingshot with updated labels
-sds <- slingshot(sce, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
-                 start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
-print(sds)
-print(class(sds))
-print(slingLineages(sds))
+# 정규화된 유사시간에 해당하는 세포 이름을 추출
+valid_cells_pseudotime <- rownames(normalized_pseudotime)
 
+# Slingshot 결과와 일치하는 세포만 필터링하여 새로운 SCE 객체 생성
+sce_filtered_subset <- sce[, valid_cells_pseudotime]
+filtered_weights <- cell_weights[valid_cells_pseudotime, , drop = FALSE]
+filtered_counts <- assay(sce_filtered_subset, "counts")
+
+# 필터링 후 각 데이터셋의 차원을 확인
+cat("Pseudotime dimensions:", dim(normalized_pseudotime), "\n")
+cat("CellWeights dimensions:", dim(filtered_weights), "\n")
+cat("Counts dimensions:", dim(filtered_counts), "\n")
+
+# 유전자 필터링 기준 설정: 최소 발현 카운트 및 최소 세포 수
+min_counts <- 10  # 최소 발현 카운트
+min_cells <- 3   # 최소 세포 수
+
+# 희소 행렬로 변환 후 일정 수 이상의 세포에서 일정 수 이상 발현된 유전자만 유지
+counts_sparse <- as(filtered_counts, "sparseMatrix")
+filtered_genes <- rowSums(counts_sparse >= min_counts) >= min_cells
+filtered_counts <- filtered_counts[filtered_genes, ]
+
+# 각 세포에서 발현된 유전자 수를 계산한 후 500개 이상의 유전자가 발현된 세포만 선택
+num_genes_per_cell <- colSums(filtered_counts > 0)
+cat("500개 이상의 유전자가 발현된 세포 수:", sum(num_genes_per_cell >= 500), "\n")
+
+# 500개 이상의 유전자가 발현된 세포만 유지
+valid_cells <- colSums(filtered_counts > 0) >= 500
+filtered_counts <- filtered_counts[, valid_cells]
+sce_filtered_subset <- sce_filtered_subset[, valid_cells]
+
+# 필터링 후 유전자 및 세포 수 확인
+cat("Filtered gene counts dimensions:", dim(filtered_counts), "\n")
+cat("Filtered cell counts dimensions:", dim(filtered_counts)[2], "\n")
+
+# 필터링된 유전자와 세포에 맞게 logcounts와 메타데이터도 업데이트
+filtered_logcounts <- assay(sce_filtered_subset, "logcounts")[rownames(filtered_counts), ]
+sce_filtered <- SingleCellExperiment(
+  assays = list(counts = filtered_counts, logcounts = filtered_logcounts),
+  colData = colData(sce_filtered_subset),
+  reducedDims = reducedDims(sce_filtered_subset)
+)
+
+# 필터링된 데이터를 사용하여 Slingshot을 다시 실행하여 새로운 궤적 계산
+sds_filtered <- slingshot(
+  sce_filtered,
+  clusterLabels = 'updated_customclassif',
+  reducedDim = 'UMAP',
+  start.clus = "Fibroblasts",
+  end.clus = c("Myofibroblasts", "Immature neurons", "Neurons"),  # 종점 설정
+  approx_points = 100  # 궤적을 매끄럽게 하기 위한 유사시간 경로 설정
+)
+
+# Slingshot 재실행 결과에서 유사시간과 세포 가중치를 다시 추출
+pseudotime_filtered <- as.data.frame(slingPseudotime(sds_filtered))
+cell_weights_filtered <- slingCurveWeights(sds_filtered)
+
+# 각 세포를 가장 높은 가중치를 가진 리니지에 할당하고, 리니지별 세포 수 계산
+pseudotime_filtered$MainLineage <- apply(cell_weights_filtered, 1, function(x) {
+  if (all(is.na(x))) {
+    return(NA)
+  } else {
+    return(paste0("Lineage", which.max(x)))
+  }
+})
+
+# 리니지별 세포 수 출력
+lineage_counts_filtered <- table(pseudotime_filtered$MainLineage)
+cat("리니지별 세포 수 (Slingshot 재실행 후):\n")
+print(lineage_counts_filtered)
+
+# Slingshot에서 추가 설정을 사용해 궤적 분석을 다시 실행
+sds_new <- slingshot(sce_filtered, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
+                     start.clus = "Fibroblasts",
+                     end.clus = c("Myofibroblasts", "Immature neurons", "Neurons"),
+                     allow.breaks = TRUE,  # 궤적에서 단절 허용
+                     extend = 'n',         # 궤적 확장하지 않음
+                     approx_points = 300)   # 유사시간 경로 매끄럽게 설정
+
+# 재실행된 Slingshot 결과에서 유사시간 및 가중치 추출
+new_pseudotime <- slingPseudotime(sds_new)
+new_weights <- slingCurveWeights(sds_new)
+
+print("새로운 weights의 NA 개수:")
+print(colSums(is.na(new_weights)))
+
+# NA가 아닌 세포에 대해 가중치 기반으로 리니지를 할당하는 함수 정의
+assign_lineage <- function(pseudotime, weights) {
+  lineage <- rep(NA, nrow(pseudotime))
+  for (i in 1:nrow(pseudotime)) {
+    valid_lineages <- which(!is.na(pseudotime[i,]))
+    if (length(valid_lineages) > 0) {
+      lineage[i] <- valid_lineages[which.max(weights[i, valid_lineages])]
+    }
+  }
+  return(lineage)
+}
+
+# 리니지 할당
+lineage_assignment <- assign_lineage(new_pseudotime, new_weights)
+
+# 리니지 할당 결과 출력
+print("리니지 할당 결과:")
+print(table(lineage_assignment, useNA = "ifany"))
+
+# 유효한 세포만 선택 (NA가 없는 세포만)
+valid_cells <- !is.na(lineage_assignment)
+final_pseudotime <- new_pseudotime[valid_cells, ]
+final_weights <- new_weights[valid_cells, ]
+final_counts <- assay(sce_filtered, "counts")[, valid_cells]
+
+# 최종 데이터 차원 확인
+print("최종 데이터 차원:")
+print(dim(final_pseudotime))
+print(dim(final_weights))
+print(dim(final_counts))
+
+# 0과 1 사이로 유사시간을 정규화
+normalize_pseudotime <- function(pseudotime) {
+  apply(pseudotime, 2, function(x) {
+    valid_idx <- !is.na(x)  # NA가 아닌 값들만 정규화
+    if (sum(valid_idx) > 0) {
+      x[valid_idx] <- (x[valid_idx] - min(x[valid_idx])) / (max(x[valid_idx]) - min(x[valid_idx]))
+    }
+    return(x)
+  })
+}
+
+# 유사시간 정규화 적용
+normalized_pseudotime <- normalize_pseudotime(final_pseudotime)  # balanced_pseudotime 대신 final_pseudotime 사용
+
+# 정규화된 유사시간 확인
+head(normalized_pseudotime)
+
+# 결측값을 처리하기 위해 'mice' 패키지의 다중 대체(Multiple Imputation) 방법 사용
+imputed_data <- mice(normalized_pseudotime, method = 'pmm', m = 5, maxit = 50, seed = 123)
+
+# 대체된 데이터셋 중 첫 번째를 선택하여 사용
+imputed_pseudotime <- complete(imputed_data, action = 1)
+
+# 대체된 pseudotime 확인
+head(imputed_pseudotime)
+
+####################################
+
+# 유효한 세포의 인덱스에 해당하는 클러스터 정보 추출
+valid_clusters <- sce_filtered$updated_customclassif[valid_cells]
+
+# 각 세포에서 가장 높은 가중치를 가진 리니지에 해당하는 Pseudotime만 남김
+pseudotime_long <- data.frame(
+  Pseudotime = imputed_pseudotime[cbind(1:nrow(imputed_pseudotime), lineage_assignment)],  # 가장 높은 가중치의 유사시간만 선택
+  Lineage = factor(lineage_assignment),  # 각 세포가 할당된 리니지
+  CellWeights = final_weights[cbind(1:nrow(final_weights), lineage_assignment)],  # 각 세포의 리니지별 가중치
+  Cluster = valid_clusters  # 각 세포가 속한 클러스터 정보
+)
+
+###################################### 20240927
 # Define the color for each lineage based on the correct matching
-lineage_colors <- c("Immature neurons" = "#440154", 
-                    "Myofibroblasts" = "#21908c", 
-                    "Neurons" = "#fde725")
+lineage_colors <- c("Immature neurons" = "red", 
+                    "Myofibroblasts" = "green", 
+                    "Neurons" = "blue")
 
-# Plot trajectories with ggplot2
-umap_coords <- reducedDims(sce)$UMAP
-plot_data <- data.frame(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2], CellType = sce$updated_customclassif)
-cell_colors <- c("Immature neurons" = "#00bef3", 
+# 세포 유형별 색상 지정
+cluster_colors <- c("Immature neurons" = "#00bef3", 
                  "Myofibroblasts" = "#ff8c8c", 
                  "Fibroblasts" = "#19c3a3", 
                  "Neurons" = "#d4a600")
 
-p <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
+# UMAP 좌표 추출
+umap_coords <- reducedDims(sce)$UMAP
+plot_data <- data.frame(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2], CellType = sce$updated_customclassif)
+
+# UMAP에 세포 유형별로 점을 그리기
+umap_plot <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
   geom_point(size = 0.5, alpha = 0.6) +
-  scale_color_manual(values = cell_colors) +
+  scale_color_manual(values = cluster_colors) +
   theme_minimal() +
   labs(title = "Cell Types with Trajectories") +
   theme(
@@ -91,142 +267,128 @@ p <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
   ) +
   guides(color = guide_legend(override.aes = list(size = 6)))
 
-# Add trajectory lines with the correct colors
-for (i in seq_along(slingCurves(sds))) {
-  curve_data <- slingCurves(sds)[[i]]$s[slingCurves(sds)[[i]]$ord, ]
-  end_cluster <- slingLineages(sds)[[i]][length(slingLineages(sds)[[i]])]
+# Slingshot 궤적 추가 (각 리니지에 맞는 색상 적용)
+for (i in seq_along(slingCurves(sds_new))) {
+  curve_data <- slingCurves(sds_new)[[i]]$s[slingCurves(sds_new)[[i]]$ord, ]
+  end_cluster <- slingLineages(sds_new)[[i]][length(slingLineages(sds_new)[[i]])]
   end_cluster_cells <- which(sce$updated_customclassif == end_cluster)
   end_point <- colMeans(umap_coords[end_cluster_cells,])
   distances <- sqrt(rowSums((curve_data - matrix(end_point, nrow = nrow(curve_data), ncol = 2, byrow = TRUE))^2))
   closest_point <- which.min(distances)
-  p <- p + geom_path(data = data.frame(UMAP1 = curve_data[1:closest_point,1], UMAP2 = curve_data[1:closest_point,2]),
-                     aes(x = UMAP1, y = UMAP2), color = lineage_colors[end_cluster], linewidth = 1, alpha = 0.7)
+  
+  # 각 리니지 궤적을 설정된 색상으로 그리기
+  umap_plot <- umap_plot + geom_path(data = data.frame(UMAP1 = curve_data[1:closest_point, 1], UMAP2 = curve_data[1:closest_point, 2]),
+                                     aes(x = UMAP1, y = UMAP2), color = lineage_colors[end_cluster], linewidth = 1, alpha = 0.7)
 }
 
-print(p)
+# UMAP 플롯 저장
+ggsave("20240927_umap_plot_with_trajectories.png", plot = umap_plot, width = 8, height = 6, dpi = 600)
 
-ggsave("20240806_trajectory_umap_plot.png", plot = p, width = 7, height = 6, dpi = 1000)
-print(slingLineages(sds))
+############
 
-# Pseudotime violin plot
-set.seed(123)
-pseudotime <- as.data.frame(slingPseudotime(sds))
-pseudotime$Cell <- rownames(pseudotime)
+# 밀도 기반 플롯 생성
+density_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, fill = Cluster, weight = CellWeights)) +
+  geom_density(alpha = 0.7) +
+  scale_fill_manual(values = cluster_colors) +
+  facet_grid(Cluster ~ ., scales = "free_y") +
+  labs(
+    title = "Pseudotime Progression Along Differentiation Trajectories",
+    x = "Normalized Pseudotime",
+    y = "Density"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
 
-# Extract common cells
-common_cells <- intersect(colnames(sce), rownames(pseudotime))
+# 밀도 플롯 출력
+print(density_plot)
+# 확률 밀도 플롯 저장
+ggsave("20240927_density_plot.png", plot = density_plot, width = 8, height = 6, dpi = 600)
 
-# Subset sce and pseudotime to include only common cells
-sce_subset <- sce[, common_cells]
-pseudotime_subset <- pseudotime[common_cells, ]
+##############
 
-# Ensure the cluster information is aligned
-plot_data <- data.frame(Cell = common_cells, 
-                        Cluster = sce_subset$updated_customclassif, 
-                        Pseudotime.Lineage1 = pseudotime_subset$Lineage1, 
-                        Pseudotime.Lineage2 = pseudotime_subset$Lineage2, 
-                        Pseudotime.Lineage3 = pseudotime_subset$Lineage3)
+# 유사시간을 일정 구간으로 나누기
+pseudotime_long$PseudotimeBin <- cut(pseudotime_long$Pseudotime, breaks = 8)
 
-plot_data$Lineage <- NA
-plot_data <- plot_data %>%
-  mutate(Lineage = case_when(
-    Cluster == "Myofibroblasts" ~ "Lineage1",
-    Cluster == "Immature neurons" ~ "Lineage2",
-    Cluster == "Neurons" ~ "Lineage3",
-    Cluster == "Fibroblasts" ~ sample(c("Lineage1", "Lineage2", "Lineage3"), n(), replace = TRUE)
-  )) %>%
-  mutate(Pseudotime = case_when(
-    Lineage == "Lineage1" ~ Pseudotime.Lineage1,
-    Lineage == "Lineage2" ~ Pseudotime.Lineage2,
-    Lineage == "Lineage3" ~ Pseudotime.Lineage3
-  ))
+# 유사시간 구간별 세포 수 계산
+cell_counts_per_bin <- as.data.frame(table(pseudotime_long$PseudotimeBin, pseudotime_long$Cluster))
+colnames(cell_counts_per_bin) <- c("PseudotimeBin", "CellType", "Count")
 
-plot_data_long_clean <- plot_data %>%
-  select(Cell, Cluster, Lineage, Pseudotime) %>%
-  filter(!is.na(Pseudotime))
-
-# Generate table for checking
-print(table(plot_data_long_clean$Cluster, plot_data_long_clean$Lineage))
-
-# Define cell colors
-cell_colors <- c("Immature neurons" = "#00bef3", 
-                 "Myofibroblasts" = "#ff8c8c", 
-                 "Fibroblasts" = "#19c3a3", 
-                 "Neurons" = "#d4a600")
-names(cell_colors) <- unique(plot_data_long_clean$Cluster)
-
-# Create violin plot
-ggplot(plot_data_long_clean, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
-  geom_violin(scale = "width", adjust = 1.5) +
-  scale_fill_manual(values = cell_colors) +
-  labs(title = "Pseudotime Distribution by Cluster", x = "Pseudotime", y = "Cluster") +
+# 바 플롯 생성
+bar_plot <- ggplot(cell_counts_per_bin, aes(x = PseudotimeBin, y = Count, fill = CellType)) +
+  geom_bar(stat = "identity", position = "stack") +  # stack으로 세포 유형 쌓아서 표시
+  scale_fill_manual(values = cluster_colors) +
+  labs(
+    title = "Number of Cells Across Pseudotime",
+    x = "Normalized Pseudotime",
+    y = "Number of Cells"
+  ) +
   theme_minimal() +
   theme(
-    legend.position = "none",
-    axis.text.x = element_text(angle = 45, hjust = 1, size = 12),
-    axis.text.y = element_text(size = 16),
-    plot.title = element_text(hjust = 0.5, size = 16),
-    axis.title.x = element_text(size = 14),
-    axis.title.y = element_text(size = 14))
+    text = element_text(size = 14),
+    legend.position = "bottom" 
+  )
 
-ggsave("20240806_pseudotime_violin_plot.png", width = 7, height = 6, dpi = 1000)
+# 바 플롯 출력
+print(bar_plot)
+# 실제 세포 갯수 바 플롯 저장
+ggsave("20240927_bar_plot.png", plot = bar_plot, width = 8, height = 6, dpi = 600)
 
-# Save the SingleCellExperiment object
-saveRDS(sds, file = "20240730_slingshot_sds_results.rds")
-sds <- readRDS("20240730_slingshot_sds_results.rds")
-print(sds)
-print(class(sds))
-print(slingLineages(sds))
+#######################
 
-# Additional steps for sampled cells and GAM fitting
-set.seed(123)
-# 각 클러스터의 5%를 선택하여 샘플링
-sampled_cells <- as.data.table(plus@meta.data)[, {
-  num_cells <- .N  # 해당 클러스터의 총 세포 수
-  sample_size <- ceiling(num_cells * 0.1)  # 5%에 해당하는 세포 수 계산
-  .(cell = .I[sample(.N, sample_size)])  # 해당 클러스터에서 샘플링된 세포의 인덱스
-}, by = seurat_clusters]$cell
+# 바이올린 플롯 생성
+violin_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
+  geom_violin(scale = "width", trim = FALSE) +  
+  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +  # 세포 위치를 점으로 추가
+  scale_fill_manual(values = cluster_colors) +
+  labs(
+    title = "The Changes of Cellular Density Over Normalized Pseudotime",
+    x = "Normalized Pseudotime",
+    y = "Cell Type"
+  ) +
+  theme_minimal() +
+  theme(
+    text = element_text(size = 14),
+    legend.position = "none"
+  )
 
-# 샘플링된 세포를 사용하여 Seurat 객체를 서브셋
-plus_sampled <- subset(plus, cells = sampled_cells)
+# 바이올린 플롯 출력
+print(violin_plot)
+ggsave("20240927_violin_plot.png", plot = violin_plot, width = 9, height = 6, dpi = 600)
 
-# 샘플링 결과 확인
-table(plus_sampled@meta.data$seurat_clusters)
+##########################################################
 
-counts_shCtrl <- plus_sampled[["RNA"]]$counts.shCtrl
-counts_shPTBP1 <- plus_sampled[["RNA"]]$counts.shPTBP1
-counts_sampled <- cbind(counts_shCtrl, counts_shPTBP1)
-counts_sparse_sampled <- as(counts_sampled, "sparseMatrix")
+# 대체된 pseudotime을 사용하여 fitGAM 실행
+sce_fitted <- fitGAM(
+  counts = final_counts,  
+  pseudotime = imputed_pseudotime,
+  cellWeights = final_weights,  
+  nknots = 5,    # 궤적에 대한 매끄러움을 조절하는 매개변수
+  verbose = TRUE,
+  parallel = FALSE
+)
 
-min_counts <- 10
-min_cells <- 3
-filtered_counts <- counts_sparse_sampled[rowSums(counts_sparse_sampled >= min_counts) >= min_cells, ]
+######################################################
+# 각 세포를 가장 높은 가중치를 가진 리니지에 할당
+lineage_assignment <- apply(final_weights, 1, which.max)  
 
-umap_coords <- Embeddings(plus_sampled, reduction = "umap")
-cell_metadata <- plus_sampled@meta.data
-sce_sampled <- SingleCellExperiment(assays = list(counts = filtered_counts), colData = cell_metadata, reducedDims = list(UMAP = umap_coords))
+# 리니지별 세포 수 계산
+lineage_counts <- table(lineage_assignment)
 
-sce_sampled$updated_customclassif <- sapply(sce_sampled$customclassif, update_cluster_labels)
+# 결과 출력
+print("리니지별 세포 수:")
+print(lineage_counts)
 
-set.seed(123)
-sds_sampled <- slingshot(sce_sampled, clusterLabels = 'updated_customclassif', reducedDim = 'UMAP',
-                         start.clus = "Fibroblasts", end.clus = c("Neurons", "Myofibroblasts", "Immature neurons"))
-print(slingLineages(sds_sampled))
+# fitGAM 결과 저장
+saveRDS(sce_fitted, file = "20240927_post_fitGAM.rds")
 
-sds <- SlingshotDataSet(sds_sampled)
+# Slingshot 객체 저장
+saveRDS(sds_filtered, file = "slingshot_obj.rds")
 
-sce_fitted <- fitGAM(counts = assay(sce_sampled, "counts"), sds = sds, nknots = 6, verbose = TRUE, parallel = FALSE)
-print(str(sce_fitted))
-print(names(sce_fitted))
-metadata(sce_fitted)$slingshot <- sds
-print(metadata(sce_fitted)$slingshot)
+# pseudotime 저장
+saveRDS(imputed_pseudotime, file = "pseudotime.rds")
 
-n_lineages <- length(slingLineages(metadata(sce_fitted)$slingshot))
-print(paste("Number of lineages:", n_lineages))
+# cell weights 저장
+saveRDS(final_weights, file = "cell_weights.rds")  
 
-saveRDS(list(sce_fitted = sce_fitted, slingshot_data = metadata(sce_fitted)$slingshot), 
-        file = "20240802_fitGAM_results010.rds")
-
-pseudotime <- slingPseudotime(sds_sampled)
-print(summary(pseudotime))
-
+# counts 객체 저장
+saveRDS(final_counts, file = "final_counts.rds")  
