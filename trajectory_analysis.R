@@ -12,31 +12,31 @@ library(tidyr)
 library(ggplot2)
 library(ggridges)
 
-# Seurat 객체 불러오기 및 SingleCellExperiment 변환
+# Seurat 객체 불러오기 
 plus <- readRDS("seurat_object2")
 
 # Seurat 객체에서 meta.data에서 shPTBP1에 해당하는 세포만 선택
 shPTBP1_cells <- rownames(plus@meta.data[plus@meta.data$orig.ident == "shPTBP1", ])
 
-# 선택된 shPTBP1 세포들에 대한 RNA 카운트 및 정규화 데이터 추출
+# shPTBP1 세포들에 대한 RNA 카운트 및 정규화 데이터 추출
 counts_shPTBP1 <- plus[["RNA"]]$counts.shPTBP1[, shPTBP1_cells]
 data_shPTBP1 <- plus[["RNA"]]$data.shPTBP1[, shPTBP1_cells]
 
-# 필터링된 메타데이터
+# shPTBP1 세포들의 메타데이터 추출
 meta_data_shPTBP1 <- plus@meta.data[shPTBP1_cells, ]
 
-# 필터링된 PCA 및 UMAP 차원 축소 결과
+# PCA 및 UMAP 차원 축소
 pca_shPTBP1 <- Embeddings(plus, "pca")[shPTBP1_cells, ]
 umap_shPTBP1 <- Embeddings(plus, "umap")[shPTBP1_cells, ]
 
-# 필터링된 데이터를 사용하여 SingleCellExperiment 객체 생성
+# SingleCellExperiment 객체 생성
 sce_shPTBP1 <- SingleCellExperiment(
   assays = list(counts = counts_shPTBP1, logcounts = data_shPTBP1),
   colData = meta_data_shPTBP1,
   reducedDims = list(PCA = pca_shPTBP1, UMAP = umap_shPTBP1)
 )
 
-# 필터링된 SCE 객체 확인
+# SCE 객체 확인
 sce_shPTBP1
 
 sce <- sce_shPTBP1
@@ -58,16 +58,40 @@ sds <- slingshot(sce, clusterLabels = 'updated_customclassif', reducedDim = 'UMA
 pseudotime <- as.data.frame(slingPseudotime(sds))
 cell_weights <- slingCurveWeights(sds)
 
-# Fibroblasts는 무작위로 리니지를 할당하고, 나머지 세포는 가중치가 가장 높은 리니지에 할당
+# 바이올린 플롯 생성을 위한 데이터 준비 (유사시간 및 리니지 정보 활용)
+cell_assignments <- apply(cell_weights, 1, which.max)
+plot_data = cbind(pseudotime, cell_assignments)
+
+# 각 세포에 해당하는 유사시간 추출
+plot_data$pstime = NA
+for (i in 1:nrow(plot_data)) {
+  plot_data$pstime[i] = plot_data[i,plot_data$cell_assignments[i]]
+}
+
+# 데이터프레임 정리 및 리니지 라벨 추가
+plot_data2 = plot_data %>%
+  mutate(lineage = factor(cell_assignments)) %>%
+  select(lineage, pstime)
+
+# 유사시간에 따른 리니지별 세포 밀도 변화를 바이올린 플롯으로 시각화
+ggplot(plot_data2, aes(x = pstime, y = lineage, fill = lineage)) +
+  geom_violin() +
+  labs(
+    title = "The Changes of Cellular Density Over Pseudotime",
+    x = "Pseudotime",
+    y = "Lineage"
+  )
+
+# 리니지 확인
+slingLineages(sds)
+
+# 모든 세포를 가중치에 따라 리니지에 할당
 pseudotime$MainLineage <- sapply(seq_len(nrow(pseudotime)), function(i) {
-  if (sce$updated_customclassif[i] == "Fibroblasts") {
-    return(sample(c("Lineage1", "Lineage2", "Lineage3"), 1))  # Fibroblasts는 무작위로 리니지 할당
-  } else {
-    lineages <- which(!is.na(pseudotime[i, ]))
-    cell_weights_row <- cell_weights[i, lineages]
-    main_lineage <- lineages[which.max(cell_weights_row)]
-    return(paste0("Lineage", main_lineage))
-  }
+  # 현재 세포의 리니지 가중치를 확인하고 가장 높은 가중치를 가진 리니지로 할당
+  lineages <- which(!is.na(pseudotime[i, ]))  # 유사시간이 NA가 아닌 리니지들 선택
+  cell_weights_row <- cell_weights[i, lineages]  # 해당 세포의 리니지 가중치 추출
+  main_lineage <- lineages[which.max(cell_weights_row)]  # 가장 높은 가중치를 가진 리니지 선택
+  return(paste0("Lineage", main_lineage))  # 해당 리니지를 리턴
 })
 
 # Pseudotime 정규화 함수 정의
@@ -83,15 +107,15 @@ normalize_pseudotime <- function(pseudotime) {
 filtered_pseudotime <- pseudotime[, c("Lineage1", "Lineage2", "Lineage3")]
 normalized_pseudotime <- normalize_pseudotime(filtered_pseudotime)
 
-# 정규화된 유사시간에 해당하는 세포 이름을 추출
+# 유사시간이 계산된 세포만 추출
 valid_cells_pseudotime <- rownames(normalized_pseudotime)
 
-# Slingshot 결과와 일치하는 세포만 필터링하여 새로운 SCE 객체 생성
+# 추출한 세포로 새로운 SCE 객체 생성
 sce_filtered_subset <- sce[, valid_cells_pseudotime]
 filtered_weights <- cell_weights[valid_cells_pseudotime, , drop = FALSE]
 filtered_counts <- assay(sce_filtered_subset, "counts")
 
-# 필터링 후 각 데이터셋의 차원을 확인
+# 각 데이터셋의 차원을 확인
 cat("Pseudotime dimensions:", dim(normalized_pseudotime), "\n")
 cat("CellWeights dimensions:", dim(filtered_weights), "\n")
 cat("Counts dimensions:", dim(filtered_counts), "\n")
@@ -225,135 +249,6 @@ imputed_pseudotime <- complete(imputed_data, action = 1)
 
 # 대체된 pseudotime 확인
 head(imputed_pseudotime)
-
-####################################
-
-# 유효한 세포의 인덱스에 해당하는 클러스터 정보 추출
-valid_clusters <- sce_filtered$updated_customclassif[valid_cells]
-
-# 각 세포에서 가장 높은 가중치를 가진 리니지에 해당하는 Pseudotime만 남김
-pseudotime_long <- data.frame(
-  Pseudotime = imputed_pseudotime[cbind(1:nrow(imputed_pseudotime), lineage_assignment)],  # 가장 높은 가중치의 유사시간만 선택
-  Lineage = factor(lineage_assignment),  # 각 세포가 할당된 리니지
-  CellWeights = final_weights[cbind(1:nrow(final_weights), lineage_assignment)],  # 각 세포의 리니지별 가중치
-  Cluster = valid_clusters  # 각 세포가 속한 클러스터 정보
-)
-
-###################################### 20240927
-# Define the color for each lineage based on the correct matching
-lineage_colors <- c("Immature neurons" = "red", 
-                    "Myofibroblasts" = "green", 
-                    "Neurons" = "blue")
-
-# 세포 유형별 색상 지정
-cluster_colors <- c("Immature neurons" = "#00bef3", 
-                 "Myofibroblasts" = "#ff8c8c", 
-                 "Fibroblasts" = "#19c3a3", 
-                 "Neurons" = "#d4a600")
-
-# UMAP 좌표 추출
-umap_coords <- reducedDims(sce)$UMAP
-plot_data <- data.frame(UMAP1 = umap_coords[,1], UMAP2 = umap_coords[,2], CellType = sce$updated_customclassif)
-
-# UMAP에 세포 유형별로 점을 그리기
-umap_plot <- ggplot(plot_data, aes(x = UMAP1, y = UMAP2, color = CellType)) +
-  geom_point(size = 0.5, alpha = 0.6) +
-  scale_color_manual(values = cluster_colors) +
-  theme_minimal() +
-  labs(title = "Cell Types with Trajectories") +
-  theme(
-    legend.text = element_text(size = 14),
-    legend.title = element_text(size = 14)
-  ) +
-  guides(color = guide_legend(override.aes = list(size = 6)))
-
-# Slingshot 궤적 추가 (각 리니지에 맞는 색상 적용)
-for (i in seq_along(slingCurves(sds_new))) {
-  curve_data <- slingCurves(sds_new)[[i]]$s[slingCurves(sds_new)[[i]]$ord, ]
-  end_cluster <- slingLineages(sds_new)[[i]][length(slingLineages(sds_new)[[i]])]
-  end_cluster_cells <- which(sce$updated_customclassif == end_cluster)
-  end_point <- colMeans(umap_coords[end_cluster_cells,])
-  distances <- sqrt(rowSums((curve_data - matrix(end_point, nrow = nrow(curve_data), ncol = 2, byrow = TRUE))^2))
-  closest_point <- which.min(distances)
-  
-  # 각 리니지 궤적을 설정된 색상으로 그리기
-  umap_plot <- umap_plot + geom_path(data = data.frame(UMAP1 = curve_data[1:closest_point, 1], UMAP2 = curve_data[1:closest_point, 2]),
-                                     aes(x = UMAP1, y = UMAP2), color = lineage_colors[end_cluster], linewidth = 1, alpha = 0.7)
-}
-
-# UMAP 플롯 저장
-ggsave("20240927_umap_plot_with_trajectories.png", plot = umap_plot, width = 8, height = 6, dpi = 600)
-
-############
-
-# 밀도 기반 플롯 생성
-density_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, fill = Cluster, weight = CellWeights)) +
-  geom_density(alpha = 0.7) +
-  scale_fill_manual(values = cluster_colors) +
-  facet_grid(Cluster ~ ., scales = "free_y") +
-  labs(
-    title = "Pseudotime Progression Along Differentiation Trajectories",
-    x = "Normalized Pseudotime",
-    y = "Density"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# 밀도 플롯 출력
-print(density_plot)
-# 확률 밀도 플롯 저장
-ggsave("20240927_density_plot.png", plot = density_plot, width = 8, height = 6, dpi = 600)
-
-##############
-
-# 유사시간을 일정 구간으로 나누기
-pseudotime_long$PseudotimeBin <- cut(pseudotime_long$Pseudotime, breaks = 8)
-
-# 유사시간 구간별 세포 수 계산
-cell_counts_per_bin <- as.data.frame(table(pseudotime_long$PseudotimeBin, pseudotime_long$Cluster))
-colnames(cell_counts_per_bin) <- c("PseudotimeBin", "CellType", "Count")
-
-# 바 플롯 생성
-bar_plot <- ggplot(cell_counts_per_bin, aes(x = PseudotimeBin, y = Count, fill = CellType)) +
-  geom_bar(stat = "identity", position = "stack") +  # stack으로 세포 유형 쌓아서 표시
-  scale_fill_manual(values = cluster_colors) +
-  labs(
-    title = "Number of Cells Across Pseudotime",
-    x = "Normalized Pseudotime",
-    y = "Number of Cells"
-  ) +
-  theme_minimal() +
-  theme(
-    text = element_text(size = 14),
-    legend.position = "bottom" 
-  )
-
-# 바 플롯 출력
-print(bar_plot)
-# 실제 세포 갯수 바 플롯 저장
-ggsave("20240927_bar_plot.png", plot = bar_plot, width = 8, height = 6, dpi = 600)
-
-#######################
-
-# 바이올린 플롯 생성
-violin_plot <- ggplot(pseudotime_long, aes(x = Pseudotime, y = Cluster, fill = Cluster)) +
-  geom_violin(scale = "width", trim = FALSE) +  
-  geom_jitter(width = 0.2, size = 0.5, alpha = 0.5) +  # 세포 위치를 점으로 추가
-  scale_fill_manual(values = cluster_colors) +
-  labs(
-    title = "The Changes of Cellular Density Over Normalized Pseudotime",
-    x = "Normalized Pseudotime",
-    y = "Cell Type"
-  ) +
-  theme_minimal() +
-  theme(
-    text = element_text(size = 14),
-    legend.position = "none"
-  )
-
-# 바이올린 플롯 출력
-print(violin_plot)
-ggsave("20240927_violin_plot.png", plot = violin_plot, width = 9, height = 6, dpi = 600)
 
 ##########################################################
 
